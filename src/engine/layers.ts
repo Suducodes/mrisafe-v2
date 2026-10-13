@@ -87,9 +87,12 @@ export class LayerSystem {
 
   has(name: string) { return this.states.has(name); }
 
+  /** Layers kept hidden whatever a chapter asks for (Learn hides the training patient). */
+  readonly alwaysHidden = new Set<string>();
+
   /** Show exactly the layers not listed; listed layers peel away (lift + fade). */
   setHidden(layers: Iterable<string>, objects: Iterable<string> = []) {
-    const hide = new Set(layers);
+    const hide = new Set([...layers, ...this.alwaysHidden]);
     for (const [name, s] of this.states) s.target = hide.has(name) ? 0 : 1;
     const hideObj = new Set(objects);
     for (const [name, o] of this.hiddenObjects) {

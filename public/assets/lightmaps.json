@@ -4,11 +4,11 @@
  "atlases": {
   "room": {
    "file": "lm_room.webp",
-   "scale": 4.103170871734619
+   "scale": 4.014496803283691
   },
   "scanner": {
    "file": "lm_scanner.webp",
-   "scale": 8.359911918640137
+   "scale": 8.32756519317627
   }
  },
  "objects": {
@@ -63,6 +63,31 @@
   "Chair_castor_3": "room",
   "Chair_leg_4": "room",
   "Chair_castor_4": "room",
+  "Corr_floor": "room",
+  "Corr_ceiling": "room",
+  "Corr_wall_south": "room",
+  "Corr_wall_east": "room",
+  "Corr_wall_west": "room",
+  "Corr_wall_north": "room",
+  "Zone_partition_frame": "room",
+  "Tape_II_III": "room",
+  "Tape_III_IV": "room",
+  "Tape_II_bay": "room",
+  "Locker_0": "room",
+  "Locker_0_tag": "room",
+  "Locker_1": "room",
+  "Locker_1_tag": "room",
+  "Locker_2": "room",
+  "Locker_2_tag": "room",
+  "Locker_3": "room",
+  "Locker_3_tag": "room",
+  "Locker_4": "room",
+  "Locker_4_tag": "room",
+  "Locker_5": "room",
+  "Locker_5_tag": "room",
+  "Staging_bench": "room",
+  "FMD_L": "room",
+  "FMD_R": "room",
   "Plinth": "scanner",
   "Cover_shroud": "scanner",
   "Seam_backer_front": "scanner",

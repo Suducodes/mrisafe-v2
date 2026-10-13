@@ -115,7 +115,7 @@ def bakeable(o):
     return True
 
 GROUPS = {
-    "room": {"room_finish", "control_room"},
+    "room": {"room_finish", "control_room", "zones"},     # equipment moves between zones: probe-lit, not baked
     "scanner": {"covers", "table", "rf_head_coil"},
 }
 groups = {g: [o for o in export_objects("Room") + export_objects("Scanner") if layer_of(o) in layers and bakeable(o)]

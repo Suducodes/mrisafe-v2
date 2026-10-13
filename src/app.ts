@@ -24,6 +24,7 @@ export class App {
 
   constructor(readonly stage: Stage, host: HTMLElement) {
     this.layers = new LayerSystem(stage);
+    this.layers.alwaysHidden.add('patient');               // the training patient appears only in Train
     this.director = new CameraDirector(stage);
     this.callouts = new Callouts(stage, host);
     this.callouts.ignore = (o, p) => this.layers.removedByCut(o, p);
