@@ -1,0 +1,25 @@
+{
+    "name":  "mrisafe-twin-v2",
+    "version":  "1.0.0",
+    "description":  "",
+    "main":  "index.js",
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "tsc --noEmit; vite build",
+                    "extract:chapters":  "node tools/extract-chapters.mjs"
+                },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "dependencies":  {
+                         "three":  "^0.170.0"
+                     },
+    "devDependencies":  {
+                            "@types/three":  "^0.170.0",
+                            "typescript":  "^5.7.2",
+                            "vite":  "^6.0.7"
+                        },
+    "type":  "module"
+}

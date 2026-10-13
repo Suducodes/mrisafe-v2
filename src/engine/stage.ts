@@ -1,0 +1,50 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+/** The full-screen 3D stage. Everything else (director, UI) drives this. */
+export class Stage {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera = new THREE.PerspectiveCamera(32, 1, 0.05, 200);
+  readonly controls: OrbitControls;
+  /** Named layer roots from the scanner glTF (cover, gradient, cryostat, ...). */
+  readonly layers = new Map<string, THREE.Object3D>();
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--paper').trim());
+
+    // Scanner isocentre sits at the origin, 1.0 m above the floor. Metres throughout.
+    this.camera.position.set(4.2, 1.7, 5.2);
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.target.set(0, 1.0, 0);
+    this.controls.enableDamping = true;
+
+    addEventListener('resize', () => this.resize());
+    this.resize();
+    this.renderer.setAnimationLoop(() => { this.controls.update(); this.renderer.render(this.scene, this.camera); });
+  }
+
+  async loadScanner(url: string) {
+    const gltf = await new GLTFLoader().loadAsync(url);
+    gltf.scene.traverse((o) => { if (o.name.startsWith('L_')) this.layers.set(o.name.slice(2), o); });
+    this.scene.add(gltf.scene);
+    return gltf;
+  }
+
+  private resize() {
+    const { innerWidth: w, innerHeight: h } = window;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+}

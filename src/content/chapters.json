@@ -1,0 +1,417 @@
+{
+  "source": "Allwyn3t6/MRI---safe-train internals.html",
+  "chapters": [
+    {
+      "id": "ch01",
+      "group": "Construction",
+      "title": "The whole system",
+      "lead": "An MRI scanner is three magnetic systems nested inside one another, plus the electronics and cooling that drive them.",
+      "body": "Main magnet B0 aligns protons RF coils tip and listen Gradient coils encode position Computer builds the image \n\n- **Magnet**: Superconducting coils make a strong, very uniform, static field. Clinical systems are usually 1.5 T or 3 T.\n\n- **Gradients**: Three coils (X, Y, Z) add small field slopes, switched on and off thousands of times per scan.\n\n- **RF**: Coils transmit radio pulses at the Larmor frequency and pick up the faint echo from the body.\n\n- **Room**: The scanner sits in a copper or aluminium RF shield (Faraday cage). Everything that needs power enters through a filtered penetration panel.\n\nDrag to orbit, scroll to zoom. Use **Peel layers** and **Explode** on the left at any time. The quarter cut-out shows the layers in section.",
+      "hadInteractive": false,
+      "legacyShot": {
+        "cam": [
+          [
+            7.4,
+            5.6,
+            9.2
+          ],
+          [
+            -1.4,
+            -0.2,
+            -0.4
+          ]
+        ],
+        "peel": 0,
+        "explode": 0,
+        "focus": [],
+        "patient": true
+      },
+      "flags": {
+        "equipment": true,
+        "field": false
+      }
+    },
+    {
+      "id": "ch02",
+      "group": "Construction",
+      "title": "Assembly, layer by layer",
+      "lead": "Press **Build next layer** to assemble the scanner from the inside of the magnet outward, in the order a factory would.",
+      "body": "Build next layer Auto-build Start again",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            3.6,
+            2.2,
+            5.6
+          ],
+          [
+            0,
+            0,
+            0.6
+          ]
+        ],
+        "peel": 0,
+        "explode": 0,
+        "focus": [],
+        "patient": false
+      },
+      "flags": {
+        "assembly": true
+      }
+    },
+    {
+      "id": "ch03",
+      "group": "Construction",
+      "title": "The superconducting magnet",
+      "lead": "The main field B0 comes from coils of niobium-titanium (NbTi) wire embedded in copper. Below about 9 K, NbTi has zero electrical resistance.",
+      "body": "- **Persistent mode**: Once the magnet is ramped up, a superconducting switch closes the circuit. The current keeps flowing with no power supply, so the field is **always on**.\n\n- **Six main coils**: Several coils along the axis, larger at the ends, shape the field so it is uniform over the imaging volume at the centre.\n\n- **Shield coils**: Outer coils carry current in the opposite direction. They cancel much of the stray field outside, so the magnet needs less floor space.\n\n- **Stored energy**: A clinical magnet stores megajoules of energy in its field.\n\nStray field Actively shielded Unshielded \nLarmor frequency Field vs Earth",
+      "safety": "**Safety link.** The field does not switch off with the scanner. That is why the projectile risk in Zone IV exists day and night.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            4.2,
+            3,
+            5.4
+          ],
+          [
+            0,
+            0.2,
+            0
+          ]
+        ],
+        "peel": 0.95,
+        "explode": 0,
+        "focus": [
+          "coils"
+        ],
+        "patient": false
+      },
+      "flags": {
+        "field": true
+      }
+    },
+    {
+      "id": "ch04",
+      "group": "Construction",
+      "title": "Cryostat and liquid helium",
+      "lead": "The coils sit in liquid helium at 4.2 K (−269 °C) inside a cryostat built like a set of nested vacuum flasks.",
+      "body": "- **Helium vessel**: Holds the coils immersed in liquid helium.\n\n- **Thermal shield**: An aluminium shell at roughly 40–50 K intercepts heat radiating inward.\n\n- **Vacuum vessel**: The outer stainless shell at room temperature. The vacuum between the layers stops heat moving by conduction and convection.\n\n- **Cold head**: A cryocooler on top, driven by a helium compressor, cools the shield and re-condenses evaporated helium. Many magnets now lose almost no helium in normal use.\n\n- **Helium amount**: Older magnets hold well over a thousand litres. Some newer sealed designs need only a few litres.\n\nPeel the outer layers with the slider to see each shell in turn.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            2.9,
+            3,
+            3.6
+          ],
+          [
+            0,
+            0.55,
+            -0.2
+          ]
+        ],
+        "peel": 0.98,
+        "explode": 0,
+        "focus": [
+          "ovc",
+          "shield",
+          "hevessel"
+        ],
+        "patient": false
+      },
+      "flags": {}
+    },
+    {
+      "id": "ch05",
+      "group": "Construction",
+      "title": "Shimming the field",
+      "lead": "A freshly built magnet is not uniform enough to image with. Shimming corrects it until the field varies by only a few parts per million across the imaging volume.",
+      "body": "- **Passive shims**: Small iron pieces placed in trays around the bore at installation, after the field is mapped.\n\n- **Active shims**: Extra coils whose currents are adjusted for each patient, because the body itself distorts the field.\n\n- **Why it matters**: Non-uniform field shifts frequencies, which shows up as distortion, signal loss and failed fat suppression.\n\nField variation over the sphere hundreds of ppm Colour green = on target \nMap and numbers are illustrative orders of magnitude, not measurements.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            1.5,
+            1.05,
+            1.7
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "peel": 5,
+        "explode": 0,
+        "focus": [
+          "shims"
+        ],
+        "patient": false
+      },
+      "flags": {
+        "shim": true
+      }
+    },
+    {
+      "id": "ch06",
+      "group": "Construction",
+      "title": "Gradient coils",
+      "lead": "Three coils wound on a resin cylinder add a field that changes linearly along X, Y or Z. That slope is how the scanner knows where a signal came from.",
+      "body": "X saddle coils Y saddle coils Z Maxwell pairs \n\nStrength \nField change across 40 cm Frequency spread \n\n- **Strength**: Clinical gradients reach tens of mT/m and switch at slew rates of the order of 100–200 T/m/s.\n\n- **Noise**: Current pulses in the static field create Lorentz forces on the windings. The coil vibrates, which is the loud knocking. Patients need hearing protection.\n\n- **Heat**: Gradient coils are water-cooled. Fast switching can also stimulate peripheral nerves, which limits how fast they are driven.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            2,
+            1.4,
+            2.3
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "peel": 6,
+        "explode": 0,
+        "focus": [
+          "gradient"
+        ],
+        "patient": false
+      },
+      "flags": {
+        "grad": true
+      }
+    },
+    {
+      "id": "ch07",
+      "group": "Construction",
+      "title": "RF coils and the Faraday cage",
+      "lead": "The body coil, a \"birdcage\" of copper rungs between two end rings, transmits a radio-frequency field B1 that rotates at the Larmor frequency. Smaller coils close to the body receive the echo.",
+      "body": "Transmit frequency Received signal**microvolts** \n\n- **Birdcage**: Currents in the rungs follow a sine pattern around the cage. The pattern rotates, producing a rotating B1 field in the bore.\n\n- **Receive arrays**: Many small coil elements near the anatomy. Each picks up signal from a nearby region, which improves signal-to-noise and allows parallel imaging.\n\n- **Shielding**: The room's RF shield keeps radio stations and electronics out of the tiny received signal, and keeps the scanner's pulses in.\n\n- **Heating**: RF energy is absorbed by the body (specific absorption rate, SAR), so the scanner limits RF power.",
+      "safety": "**Safety link.** Conductive loops (crossed legs, cables) can concentrate RF currents and cause burns. This is why positioning and cable routing are checked.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            1.25,
+            0.85,
+            1.6
+          ],
+          [
+            0,
+            -0.05,
+            0
+          ]
+        ],
+        "peel": 7,
+        "explode": 0,
+        "focus": [
+          "rf"
+        ],
+        "patient": true
+      },
+      "flags": {}
+    },
+    {
+      "id": "ch08",
+      "group": "How it works",
+      "title": "Protons in the field",
+      "lead": "Hydrogen nuclei (protons) in water and fat behave like tiny magnets. In the field B0 they line up slightly more with the field than against it, and precess around it.",
+      "body": "f = γ̄ · B0 &nbsp;&nbsp; γ̄ = 42.58 MHz/T (hydrogen) \nB0 Precession frequency \n\n- **Net M**: The tiny excess aligned with B0 adds up to a net magnetisation M along the bore axis. MRI measures M, not single protons.\n\n- **Real excess**: Only a few protons per million are in excess at clinical field strengths. The animation exaggerates it so you can see it.\n\n- **Precession**: Shown slowed down by roughly a hundred million times.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            0.72,
+            0.42,
+            0.86
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "peel": 8.6,
+        "explode": 0,
+        "focus": [],
+        "patient": false
+      },
+      "flags": {}
+    },
+    {
+      "id": "ch09",
+      "group": "How it works",
+      "title": "RF excitation and the signal",
+      "lead": "An RF pulse at the Larmor frequency tips M away from B0. The tipped magnetisation precesses and induces a voltage in the receive coil: the MR signal.",
+      "body": "Mz (along B0) 1.00 Mxy (transverse) 0.00 \n\n- **Lab frame**: M spirals down as it is tipped and spirals back up as it relaxes, while precessing.\n\n- **Rotating frame**: Viewed from a frame turning at the Larmor frequency, the precession disappears and the tip is a simple rotation about B1.\n\n- **FID**: The decaying oscillation picked up after the pulse is the free induction decay.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            0.7,
+            0.45,
+            0.82
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "peel": 8.6,
+        "explode": 0,
+        "focus": [],
+        "patient": false
+      },
+      "flags": {}
+    },
+    {
+      "id": "ch10",
+      "group": "How it works",
+      "title": "Relaxation and contrast",
+      "lead": "After the pulse, each tissue recovers at its own pace. T1 is regrowth along B0; T2 is loss of the transverse signal. Choosing TR and TE decides which difference shows up as brightness.",
+      "body": "TR (repetition time) \nTE (echo time) \nS = PD · (1 − e −TR/T1 ) · e −TE/T2 \n\nSYNTHETIC HEAD · THIS TR/TE \n\nT1/T2 values are approximate 1.5 T figures for teaching; published values vary. The image is a synthetic phantom computed from the signal equation, not a scan.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            0.04,
+            0.78,
+            0.5
+          ],
+          [
+            0,
+            -0.06,
+            0.02
+          ]
+        ],
+        "peel": 8.6,
+        "explode": 0,
+        "focus": [],
+        "patient": false
+      },
+      "flags": {}
+    },
+    {
+      "id": "ch11",
+      "group": "How it works",
+      "title": "Slice selection",
+      "lead": "With the Z gradient on, every position along the bore has a slightly different Larmor frequency. An RF pulse containing only a narrow band of frequencies excites only the matching slice.",
+      "body": "The slab is drawn 10× thicker than the computed value so it is visible. \n\n- **Thinner slice**: Use a stronger gradient or a narrower RF bandwidth.\n\n- **Move the slice**: Shift the RF centre frequency; the gradient stays the same.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            2.1,
+            1.25,
+            2.4
+          ],
+          [
+            0,
+            -0.05,
+            0.1
+          ]
+        ],
+        "peel": 6.6,
+        "explode": 0,
+        "focus": [],
+        "patient": true
+      },
+      "flags": {
+        "slice": true
+      }
+    },
+    {
+      "id": "ch12",
+      "group": "How it works",
+      "title": "From k-space to image",
+      "lead": "Within the slice, the X and Y gradients give each location its own frequency and phase. Each repetition records one line of spatial frequencies (k-space). An inverse Fourier transform turns the filled k-space into the image.",
+      "body": "K-SPACE · 0 /128 LINES \nIMAGE · INVERSE FFT \nKeep only All lines Centre Edges \n\n- **Centre of k-space**: Low spatial frequencies: overall brightness and contrast. Keep only the centre and the image is blurred but the contrast is right.\n\n- **Edges**: High spatial frequencies: fine detail and edges.\n\n- **Scan time**: Roughly TR × number of phase-encode lines (× averages), which is why long-TR scans take minutes.\n\nThis runs a real 2D FFT on a synthetic phantom. Real scanners also correct for coil sensitivity, noise and motion.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            2.1,
+            1.25,
+            2.4
+          ],
+          [
+            0,
+            -0.05,
+            0.1
+          ]
+        ],
+        "peel": 6.6,
+        "explode": 0,
+        "focus": [],
+        "patient": true
+      },
+      "flags": {
+        "slice": true,
+        "kspace": true
+      }
+    },
+    {
+      "id": "ch13",
+      "group": "How it works",
+      "title": "Quench",
+      "lead": "A quench is a sudden loss of superconductivity. The coil becomes resistive, the stored energy turns to heat, and the liquid helium boils off very quickly.",
+      "body": "- **Expansion**: Liquid helium expands roughly 750 times when it warms to room-temperature gas. The quench pipe carries it outside the building.\n\n- **Hazards**: If gas enters the room: oxygen displacement, extreme cold, and pressure that can make an inward-opening door hard to open. Oxygen monitors and room ventilation help.\n\n- **Magnet stop**: The magnet stop (emergency run-down) button deliberately quenches the magnet. It is for emergencies such as a person pinned by a ferromagnetic object. It is not the same as the emergency power-off.\n\n- **Cost**: Re-filling helium and ramping the magnet back up takes days and is expensive.\n\nTimescale is sped up. The animation is illustrative.",
+      "hadInteractive": true,
+      "legacyShot": {
+        "cam": [
+          [
+            4.8,
+            4,
+            5.8
+          ],
+          [
+            0,
+            1.1,
+            -0.4
+          ]
+        ],
+        "peel": 0,
+        "explode": 0,
+        "focus": [
+          "ovc"
+        ],
+        "patient": false
+      },
+      "flags": {
+        "quench": true,
+        "field": true
+      }
+    },
+    {
+      "id": "ch14",
+      "group": "Check yourself",
+      "title": "Six quick questions",
+      "body": "",
+      "hadInteractive": false,
+      "legacyShot": {
+        "cam": [
+          [
+            5.2,
+            3.4,
+            6.2
+          ],
+          [
+            0,
+            0.2,
+            0
+          ]
+        ],
+        "peel": 0,
+        "explode": 0.55,
+        "focus": [],
+        "patient": false
+      },
+      "flags": {}
+    }
+  ]
+}
