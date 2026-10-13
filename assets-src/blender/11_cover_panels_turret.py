@@ -1,25 +1,14 @@
-"""Cover detailing, part 2: open the shroud at the bore (liner is its own layer), face control
-panels, cold-head turret, and the cryocooler / service neck / quench stub under it."""
-import bpy, bmesh, math
+"""Cover detailing, part 2: face control panels, cold-head turret, and the cryocooler /
+service neck / quench stub under it. (The bore liner is defined in 01_stack.py.)"""
+import bpy, math
 exec(open(r"C:\Users\Sudarshan\claude_code\mrisafe-v2\assets-src\blender\helpers.py").read())
 
 D = 0.84
 covers = layer("covers")
-shroud = bpy.data.objects["Cover_shroud"]
 white = bpy.data.materials["Cover_GlossABS"]
 graphite = bpy.data.materials["Bezel_Graphite"]
 
-# --- 1. liner spans flare-to-flare (the shroud is built open at the bore, see 02_shroud.py),
-#        sitting just inside the flare lip with a 2 mm joint at each end ---------------------
-liner = bpy.data.objects["Bore_liner"]
-liner_mods = [(m.name, m.object) for m in liner.modifiers]
-parent = liner.parent
-lathe("Bore_liner", ring(0.352, 0.360, -0.700, 0.700), bpy.data.materials["BoreLiner_GRP"], parent)
-liner = bpy.data.objects["Bore_liner"]
-for n, ob in liner_mods:
-    m = liner.modifiers.new(n, "BOOLEAN"); m.object = ob; m.solver = "EXACT"
-
-# --- 2. face control panels, either side of the bezel ----------------------------------------
+# --- face control panels, either side of the bezel ------------------------------------------
 soft = material("Button_SoftTouch", (0.20, 0.21, 0.22), 0.0, 0.55)
 stop = material("Button_Stop", (0.62, 0.06, 0.05), 0.0, 0.35, coat=0.5)
 screen = material("Panel_Display", (0.01, 0.012, 0.014), 0.0, 0.06, coat=1.0,
@@ -35,7 +24,7 @@ for side, sx in (("L", -1), ("R", 1)):
     cylinder(f"Panel_{side}_stop", 0.016, 0.009, (x, yf - 0.009, zc - 0.115), stop, covers, axis="Y", verts=40, bevel=0.002)
     cylinder(f"Panel_{side}_led", 0.0028, 0.002, (x + 0.032, yf - 0.007, zc + 0.165), led, covers, axis="Y", verts=16)
 
-# --- 3. turret cover over the cold head -------------------------------------------------------
+# --- turret cover over the cold head -------------------------------------------------------
 # a low tapered hump set toward the rear, not a hat: ~22 cm above the shroud crown
 TZ0, TZ1, TY = 2.115, 2.37, 0.30
 def rrect3(w, d, z, n=7.0):
@@ -48,7 +37,7 @@ shadow = bpy.data.materials["Seam_Shadow"]
 ts = loft_loops("Turret_seam", [rrect3(0.746, 0.926, 2.150), rrect3(0.746, 0.926, 2.158)], shadow, covers, cap=False)
 ts.modifiers.new("Wall", "SOLIDIFY").thickness = 0.003               # watertight for the EXACT cutaway
 
-# --- 4. cryocooler + service neck + quench stub (own layer, sits inside the turret) ----------
+# --- cryocooler + service neck + quench stub (own layer, sits inside the turret) ----------
 cold = layer("coldhead")
 steel = bpy.data.materials["OVC_Stainless"]
 alu = bpy.data.materials["CoilFormer_Al"]

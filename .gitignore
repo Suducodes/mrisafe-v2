@@ -2,3 +2,4 @@ node_modules/
 dist/
 reference/
 assets-src/*.blend1
+assets-src/build/

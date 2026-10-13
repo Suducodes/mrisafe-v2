@@ -183,7 +183,7 @@ def rounded_box(name, size, loc, radius, mat, parent=None, segments=4):
     o.scale = size
     o.location = loc
     with bpy.context.temp_override(active_object=o, object=o, selected_editable_objects=[o]):
-        bpy.ops.object.transform_apply(scale=True)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     bv = o.modifiers.new("Round", "BEVEL")
     bv.width = radius
     bv.segments = segments
@@ -228,7 +228,7 @@ def box(name, size, loc, mat, parent=None):
     o.scale = size
     o.location = loc
     with bpy.context.temp_override(active_object=o, object=o, selected_editable_objects=[o]):
-        bpy.ops.object.transform_apply(scale=True)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     return _link(o, parent, mat)
 
 
