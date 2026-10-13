@@ -24,8 +24,26 @@ const body = block.replace('const CH = [];', '').replace('const ch = (o) => CH.p
 const sandbox = new Proxy(ctx, { has: () => true, get: (t, k) => (k in t ? t[k] : k === Symbol.unscopables ? undefined : fnStub) });
 vm.runInContext('with (sandbox) { ' + body + ' }', vm.createContext({ sandbox }));
 
-const strip = (html) => html
-  .replace(/<div class="ctrl">[\s\S]*?<\/div>\s*<\/div>/g, '')
+// Sir's flow diagrams (<div class="flow"><span>A</span><em>does x</em>...) read as a chain of steps
+const flow = (html) => html.replace(/<div class="flow">([\s\S]*?)<\/div>/g, (_, inner) => {
+  const parts = [...inner.matchAll(/<span>(.*?)<\/span>\s*<em>(.*?)<\/em>/g)].map(([, a, b]) => `**${a}** ${b}`);
+  return `<p>${parts.join(' → ')}.</p>`;
+});
+
+// remove whole <div class="ctrl"> blocks (sir's sliders and buttons), honouring nested divs
+const dropCtrl = (html) => {
+  let out = html, at;
+  while ((at = out.indexOf('<div class="ctrl">')) !== -1) {
+    let depth = 0, i = at;
+    const re = /<div\b|<\/div>/g; re.lastIndex = at;
+    for (let m; (m = re.exec(out)); ) { depth += m[0] === '</div>' ? -1 : 1; if (depth === 0) { i = re.lastIndex; break; } }
+    out = out.slice(0, at) + out.slice(i);
+  }
+  return out;
+};
+
+const strip = (html) => dropCtrl(flow(html))
+  .replace(/<p class="note">[\s\S]*?<\/p>/g, '')          // hints about the original's on-screen controls
   .replace(/<(li)>\s*<b>(.*?)<\/b>\s*<span>([\s\S]*?)<\/span>\s*<\/li>/g, '\n- **$2**: $3')
   .replace(/<b>(.*?)<\/b>/g, '**$1**')
   .replace(/<[^>]+>/g, ' ')

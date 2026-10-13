@@ -157,46 +157,6 @@ def lightmap_uvs(objs):
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def collapse_unlit(objs, lit_px, res, rel=0.001):
-    """Faces that received no light in a cheap pre-bake (wall backs against the cage, the shroud's
-    inner skin, undersides) get all their UVs collapsed to one point per object, so the final pack
-    spends texels only on what can be seen. Collapsing (not shrinking each face about its own
-    centre) keeps a connected unlit region as ONE island; thousands of torn islands would each pay
-    the pack margin and eat the atlas. A face counts as unlit only if its centre AND every corner
-    (pulled 15 % inward) are black, so a partly lit face like the floor under the scanner is kept."""
-    peak = lit_px[..., :3].max(axis=2)
-    ref = float(np.percentile(peak[peak > 1e-6], 99.0)) if (peak > 1e-6).any() else 1.0
-    def dark(u, v):
-        x = min(max(int(u * res), 0), res - 1); y = min(max(int(v * res), 0), res - 1)
-        return peak[y, x] < rel * ref                    # pixel rows run bottom-up, as UV v does
-    collapsed = total = 0
-    for o in objs:
-        uv = o.data.uv_layers["Lightmap"].data
-        point = None
-        for f in o.data.polygons:
-            total += 1
-            pts = [uv[i].uv.copy() for i in f.loop_indices]
-            cu = sum(p.x for p in pts) / len(pts); cv = sum(p.y for p in pts) / len(pts)
-            if dark(cu, cv) and all(dark(cu + (p.x - cu) * 0.85, cv + (p.y - cv) * 0.85) for p in pts):
-                point = point or (cu, cv)
-                for i in f.loop_indices:
-                    uv[i].uv = point
-                collapsed += 1
-    log(f"  collapsed {collapsed}/{total} unlit faces")
-
-
-def repack(objs):
-    bpy.ops.object.select_all(action="DESELECT")
-    for o in objs:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = objs[0]
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.select_all(action="SELECT")
-    bpy.ops.uv.pack_islands(rotate=True, margin=0.004)  # uniform scale: collapsed islands stay points
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-
 # --- 3. bake + encode -------------------------------------------------------------------------
 def blur(a, r=2, passes=2):
     """Separable box blur (two passes ~ gaussian) to take the residual Monte Carlo grain out."""
@@ -258,8 +218,6 @@ for g, objs in groups.items():
     if not objs:
         continue
     lightmap_uvs(objs)
-    collapse_unlit(objs, bake_raw(g + "_pre", objs, 512, 16), 512)
-    repack(objs)
     log(f"uv {g} packed")
     s = bake(g, objs, ATLAS[g])
     manifest["atlases"][g] = {"file": f"lm_{g}.webp", "scale": s}
