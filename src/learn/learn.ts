@@ -35,6 +35,8 @@ export class Learn {
     this.nextBtn = el('button', { class: 'btn primary', onclick: () => this.go(this.current + 1) }, 'Next  →');
     this.card = el('article', { class: 'card out', 'aria-live': 'polite' }, this.body,
       el('div', { class: 'foot' }, el('button', { class: 'btn small index-toggle', onclick: () => document.body.classList.toggle('index-open') }, 'Chapters'),
+        el('button', { class: 'btn small', title: 'Peel the next layer away (T3); shift-click to restore (T4)', onclick: (e: Event) => this.peel((e as MouseEvent).shiftKey ? -1 : 1) }, 'Peel'),
+        el('button', { class: 'btn small', title: 'Open or close the quarter section (T5)', onclick: () => this.toggleCut() }, 'Section'),
         this.prog, this.prevBtn, this.nextBtn));
     this.index.hidden = true;
     host.append(this.index, this.card);
@@ -53,6 +55,27 @@ export class Learn {
     if (fromHome) await this.coldOpen();
     this.index.hidden = false;
     this.go(chapter, true);
+  }
+
+  // --- controller pads in Learn (Allwyn Sir's map: prev, next, peel, restore, explode, reset) ----
+  private manualPeel = 0;
+  private manualCut = false;
+  prev() { this.go(this.current - 1); }
+  next() { this.go(this.current + 1); }
+  peel(step: number) {
+    const order = ['covers', 'coldhead', 'cryostat', 'thermal_shield', 'he_vessel', 'liner', 'rf_body_coil', 'rf_shield', 'gradient', 'shims'];
+    // wraps: after the innermost layer, the next peel brings everything back
+    const next = this.manualPeel + step;
+    this.manualPeel = next > order.length ? 0 : Math.max(0, next);
+    this.ctx.layers.setHidden(order.slice(0, this.manualPeel));
+  }
+  toggleCut() { this.manualCut = !this.manualCut; this.ctx.layers.setCut(this.manualCut); }
+  resetView() { this.manualPeel = 0; this.go(this.current, true); }
+
+  /** What the coach should know about the current chapter. */
+  context() {
+    const ch = CHAPTERS[this.current];
+    return ch ? { chapter: ch.title, notes: [ch.lead, ch.body, ch.safety].filter(Boolean).join('\n\n').replace(/\*\*/g, '') } : {};
   }
 
   leave() {
@@ -76,6 +99,7 @@ export class Learn {
 
     this.plate?.dispose(); this.plate = null;
     this.callouts.set([]);
+    this.manualPeel = 0; this.manualCut = !!st.cut;
     this.ctx.layers.setHidden(st.hide ?? [], st.hideObjects ?? []);
     this.ctx.layers.setCut(!!st.cut);
     this.ctx.director.fly(st.shot).then(() => { if (this.current === i) this.callouts.set(st.callouts); });

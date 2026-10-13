@@ -1,26 +1,30 @@
 {
-    "name": "mrisafe-twin-v2",
-    "version": "1.0.0",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "dev": "vite",
-        "build": "tsc --noEmit; vite build",
-        "extract:chapters": "node tools/extract-chapters.mjs"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "dependencies": {
-        "@fontsource/inter-tight": "^5.3.0",
-        "@fontsource/jetbrains-mono": "^5.3.0",
-        "three": "^0.170.0"
-    },
-    "devDependencies": {
-        "@gltf-transform/cli": "^4.1.1",
-        "@types/three": "^0.170.0",
-        "typescript": "^5.7.2",
-        "vite": "^6.4.4"
-    },
-    "type": "module"
+    "name":  "mrisafe-twin-v2",
+    "version":  "1.0.0",
+    "description":  "",
+    "main":  "index.js",
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "tsc --noEmit \u0026\u0026 vite build",
+                    "extract:chapters":  "node tools/extract-chapters.mjs",
+                    "preview":  "vite preview",
+                    "build:assets":  "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-assets.ps1"
+                },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "dependencies":  {
+                         "@fontsource/inter-tight":  "^5.3.0",
+                         "@fontsource/jetbrains-mono":  "^5.3.0",
+                         "three":  "^0.170.0"
+                     },
+    "devDependencies":  {
+                            "@gltf-transform/cli":  "^4.1.1",
+                            "@types/three":  "^0.170.0",
+                            "typescript":  "^5.7.2",
+                            "vite":  "^6.4.4"
+                        },
+    "type":  "module"
 }

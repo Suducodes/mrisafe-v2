@@ -6,8 +6,40 @@
 - **Goal:** take sir's project to the next level. It should be extravagant, look real (photographic), be genuinely enjoyable to study, and make the subject clear.
   It should **not** just copy the RP2040 look. It should be far better than that.
 - **Hard rule:** it must NOT look vibecoded. It should feel natural, authored and restrained, and surprise Sudarshan the way the RP2040 bench did.
-- **Status:** the architecture is planned and approved for direction. Nothing has been built yet. Sir's buy-in is still pending, so treat this as a v2 branch/PR on his repo, not a replacement.
-  Open questions: target hardware (lab PCs vs laptops), deadline.
+- **Status (2026-10-14):** built and working end to end. Local git only (Suducodes identity), nothing pushed. Sir's buy-in is still pending, so treat this as a v2 branch/PR on his repo, not a replacement.
+  Open questions: deadline. Target hardware is now partly answered: the in-app browser renders on Intel UHD integrated graphics, and the adaptive resolution holds it usable.
+
+## Where it stands (read this first)
+- **Run:**
+  - `npm run dev`: the dev server. The parent `.claude/launch.json` entry is `mrisafe-v2`, on port 5191.
+  - `npm run build`, then `npm run preview`: the production build, on port 5192 (`mrisafe-v2-dist`).
+- **Assets:** `npm run build:assets` runs a headless Blender bake (OptiX) plus Meshopt, about 6 minutes; `-Quick` takes about 2 minutes.
+  - The model rebuilds from the scripts `assets-src/blender/01..26`.
+  - The run order is in `assets-src/README.md`.
+- **Learn:**
+  - **Cold open:** a flight through the RF glass, the scanner peeled down to the windings, then reassembled.
+  - **Chapters:** 14, in sir's words, each with a camera shot, peel, cutaway, callouts and a live instrument:
+    - assembly
+    - Biot–Savart field lines, the 5 G floor line and the wrench projectile
+    - cryostat, shim map, gradient pulses and knocks, RF cage reveal
+    - spin ensemble and spin echo, T1/T2 relaxation
+    - slice selection, k-space with sound and artefacts
+    - quench, quiz
+- **Train:**
+  - Sir's engine is unmodified, playing out in the Zone II/III/IV corridor and staging bay with his five items and the patient under a blanket.
+  - Hints, violations with their evidence, the projectile replay for blocked MR Unsafe moves, the table sliding into the bore on T5, and a report with his adaptive recommendation and JSON/CSV export.
+  - A quench drill, illustrative and scored separately.
+- **Coach:**
+  - Sir's KB runs offline.
+  - It detects a local Ollama and grounds answers in the KB. The user's Ollama install is broken (`llama-server` missing), so the coach falls back honestly.
+- **Controller:** sir's ESP32 over Web Serial: pads, tilt-orbit, gestures and the wand.
+- **Verification:** with the browser pane hidden, use `__stage.advance(seconds)` in dev to step frames deterministically, then screenshot.
+- **Not done yet:**
+  - MediaPipe hand control (sir had it).
+  - A first-person free walk (zone-to-zone camera hops for now).
+  - A live console UI on the control-room monitors.
+  - KTX2 textures (`toktx` isn't installed).
+  - A dark "console" theme.
 
 ## What the current site does (audited 2026-10-13 in browser)
 - Home page with Train/Learn cards. The status chips (controller, coach) are fine.

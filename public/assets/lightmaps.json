@@ -4,11 +4,11 @@
  "atlases": {
   "room": {
    "file": "lm_room.webp",
-   "scale": 4.014496803283691
+   "scale": 4.032858371734619
   },
   "scanner": {
    "file": "lm_scanner.webp",
-   "scale": 8.32756519317627
+   "scale": 8.355743408203125
   }
  },
  "objects": {

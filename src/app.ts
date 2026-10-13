@@ -7,6 +7,9 @@ import { Learn } from './learn/learn';
 import { Train } from './train/train';
 import { HOME_SHOT } from './learn/chapters';
 import { el } from './ui/dom';
+import { Coach } from './coach/coach';
+import { Controller } from './input/controller';
+import * as THREE from 'three';
 
 export type Mode = 'home' | 'learn' | 'train';
 
@@ -18,6 +21,8 @@ export class App {
   readonly callouts: Callouts;
   readonly learn: Learn;
   readonly train: Train;
+  readonly coach: Coach;
+  readonly controller: Controller;
   private mode: Mode = 'home';
   private readonly home: HTMLElement;
   private readonly modeButtons: Record<'learn' | 'train', HTMLButtonElement>;
@@ -25,12 +30,14 @@ export class App {
   constructor(readonly stage: Stage, host: HTMLElement) {
     this.layers = new LayerSystem(stage);
     this.layers.alwaysHidden.add('patient');               // the training patient appears only in Train
+    this.layers.setHidden([]);
     this.director = new CameraDirector(stage);
     this.callouts = new Callouts(stage, host);
     this.callouts.ignore = (o, p) => this.layers.removedByCut(o, p);
     const ctx = { stage, layers: this.layers, director: this.director, audio: this.audio };
     this.learn = new Learn(ctx, this.callouts, host);
     this.train = new Train(ctx, this.callouts, host);
+    this.coach = new Coach(host, () => (this.mode === 'learn' ? this.learn.context() : this.mode === 'train' ? this.train.context() : {}));
 
     this.home = el('section', { class: 'home' },
       el('h1', {}, 'An MRI suite you can take apart.'),
@@ -46,11 +53,45 @@ export class App {
       learn: el('button', { onclick: () => this.go('learn') }, 'Learn'),
       train: el('button', { onclick: () => this.go('train') }, 'Train'),
     };
-    host.append(this.home, el('div', { class: 'modebar' }, this.modeButtons.learn, this.modeButtons.train, sound,
+    const ctlBtn = el('button', { title: 'Connect the handheld controller', onclick: () => this.controller.connect() }, 'Controller');
+    this.controller = this.makeController(ctlBtn);
+    ctlBtn.hidden = !this.controller.supported;
+    host.append(this.home, el('div', { class: 'modebar' }, this.modeButtons.learn, this.modeButtons.train,
+      el('button', { onclick: () => this.coach.toggle() }, 'Ask'), ctlBtn, sound,
       el('button', { onclick: () => this.go('home') }, 'Home')));
     addEventListener('pointerdown', () => this.audio.ensure(), { once: true });
     this.director.cut(HOME_SHOT);
     this.setBodyMode('home');
+  }
+
+  /**
+   * Allwyn Sir's ESP32 controller. Pads mean his Train/Learn pad map; tilt orbits the camera;
+   * flicks change chapter; the magnetometer wand reading goes in the button's title. The button
+   * only shows "connected" once the device has actually said hello.
+   */
+  private makeController(btn: HTMLButtonElement) {
+    const learnPads: Record<string, () => void> = {
+      T1: () => this.learn.prev(), T2: () => this.learn.next(), T3: () => this.learn.peel(1),
+      T4: () => this.learn.peel(-1), T5: () => this.learn.toggleCut(), T6: () => this.learn.resetView(),
+    };
+    return new Controller({
+      status: (text, ok) => { btn.title = text; btn.textContent = ok ? 'Controller ●' : 'Controller'; },
+      pad: (id, seq) => { if (this.mode === 'train') this.train.pad(id, 'hw', seq); else if (this.mode === 'learn') learnPads[id]?.(); },
+      gesture: (g) => {
+        if (this.mode !== 'learn') return;
+        if (g === 'flick_left') this.learn.prev();
+        if (g === 'flick_right') this.learn.next();
+        if (g === 'double_tap') this.learn.resetView();
+      },
+      tilt: (dAz, dEl) => {
+        const c = this.stage.controls;
+        const sph = new THREE.Spherical().setFromVector3(this.stage.camera.position.clone().sub(c.target));
+        sph.theta += dAz;
+        sph.phi = THREE.MathUtils.clamp(sph.phi - dEl, 0.15, Math.PI - 0.15);
+        this.stage.camera.position.copy(c.target).add(new THREE.Vector3().setFromSpherical(sph));
+      },
+      wand: (text, _level, dmag) => { btn.title = `Wand meter: ${text} (${dmag.toFixed(0)} µT change)`; },
+    });
   }
 
   /** Route from the URL hash: #learn/ch05, #train. */

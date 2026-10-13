@@ -241,7 +241,8 @@ sc.camera = cam
 vs = sc.view_settings
 saved = (vs.view_transform, vs.look, vs.exposure)
 vs.view_transform = "Standard"; vs.look = "None"; vs.exposure = 0.0
-sc.render.resolution_x, sc.render.resolution_y, sc.render.resolution_percentage = (1024, 512, 100) if QUICK else (2048, 1024, 100)
+# 1024 x 512 is plenty: PMREM blurs reflections by roughness, and 2048 x 1024 costs ~2 MB more download
+sc.render.resolution_x, sc.render.resolution_y, sc.render.resolution_percentage = 1024, 512, 100
 sc.cycles.samples = 64 if QUICK else 256
 sc.cycles.use_denoising = True
 sc.render.image_settings.file_format = "HDR"

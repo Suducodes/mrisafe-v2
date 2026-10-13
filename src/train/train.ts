@@ -5,6 +5,8 @@ import { el } from '../ui/dom';
 import { ENGINE } from '../physics/sir';
 import { TrainScene, SHOTS, type ItemId, type ZoneId } from './scene';
 import { showReport } from './report';
+import { runQuenchDrill } from './drill';
+import { CEILING } from '../learn/chapters';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Outcome = any;
@@ -28,6 +30,7 @@ export class Train {
   private readonly body: HTMLElement;
   private readonly feedback: HTMLElement;
   private readonly logEl: HTMLElement;
+  private readonly scoreEl: HTMLElement;
   private view: { kind: 'intro' } | { kind: 'record' } | { kind: 'item'; id: ItemId } | { kind: 'patient' } = { kind: 'intro' };
   private active = false;
   private down: { x: number; y: number } | null = null;
@@ -38,8 +41,10 @@ export class Train {
     this.body = el('div', { class: 'view' });
     this.feedback = el('div', { class: 'feedback', 'aria-live': 'polite' });
     this.logEl = el('ol', { class: 'log' });
+    this.scoreEl = el('span', { class: 'prog' });
     this.card = el('article', { class: 'card out train-card' },
-      el('div', { class: 'body' }, this.feedback, this.body, el('details', { class: 'logbox' }, el('summary', {}, 'Event log'), this.logEl)));
+      el('div', { class: 'body' }, this.feedback, this.body, el('details', { class: 'logbox' }, el('summary', {}, 'Event log'), this.logEl)),
+      el('div', { class: 'foot' }, el('button', { class: 'btn small index-toggle', onclick: () => document.body.classList.toggle('index-open') }, 'Checkpoints'), this.scoreEl));
     this.panel.hidden = true;
     host.append(this.panel, this.card);
 
@@ -55,12 +60,15 @@ export class Train {
     addEventListener('keydown', (e) => {
       if (!this.active || (e.target as HTMLElement).closest('input, textarea, select')) return;
       const n = Number(e.key);
-      if (n >= 1 && n <= 6) this.pad(`T${n}`);
+      if (n >= 1 && n <= 6) this.pad(`T${n}`, 'kbd');
     });
     ctx.stage.onFrame((dt) => this.slideTable(dt));
   }
 
   private get attempt() { return this.session.current; }
+
+  /** What the coach should know: this attempt's violations. */
+  context() { return this.session ? { violations: this.attempt.violations() } : {}; }
 
   async enter(_fromHome: boolean) {
     this.active = true;
@@ -82,6 +90,7 @@ export class Train {
 
   leave() {
     this.active = false;
+    this.drill?.dispose(); this.drill = null;
     this.panel.hidden = true;
     this.card.classList.add('out');
     document.body.classList.remove('card-open');
@@ -94,9 +103,9 @@ export class Train {
   }
 
   // ---------------------------------------------------------------------------------------
-  private handle(evt: Record<string, unknown>): Outcome {
+  private handle(evt: Record<string, unknown>, src = 'ui'): Outcome {
     const before = this.attempt;
-    const out = this.session.handle({ ...evt, src: 'ui' });
+    const out = this.session.handle({ ...evt, src });
     this.showOutcome(out);
     for (const fx of out.effects ?? []) {
       if (fx.type === 'move') this.scene?.move(fx.id, fx.zone);
@@ -112,9 +121,11 @@ export class Train {
     return out;
   }
 
-  private pad(p: string) {
-    if (p === 'T6') { this.handle({ event: 'RESET_SCENARIO', pad: 'T6' }); return; }
-    this.handle({ event: E.PAD_EVENT[p], pad: p });
+  /** A pad touch from the screen, keys 1-6 (src ui/kbd) or the ESP32 controller (src hw). */
+  pad(p: string, src = 'ui', seq?: number) {
+    if (!this.active) return;
+    if (p === 'T6') { this.handle({ event: 'RESET_SCENARIO', pad: 'T6', seq }, src); return; }
+    this.handle({ event: E.PAD_EVENT[p], pad: p, seq }, src);
   }
 
   private startScenario(id: string) {
@@ -228,6 +239,8 @@ export class Train {
 
   private renderPanel() {
     const a = this.attempt, hint = a.scenario.hints ? a.nextHint() : null;
+    const done = Object.values(a.checkpoints).filter((c: any) => c.status === 'done').length;
+    this.scoreEl.textContent = `${a.scenario.title} · score ${a.score()} · ${done}/${Object.keys(a.checkpoints).length} checkpoints`;
     const scen = el('select', { class: 'scenario', onchange: (e: Event) => this.startScenario((e.target as HTMLSelectElement).value) },
       ...Object.entries(E.SCENARIOS).map(([id, s]: [string, any]) => el('option', { value: id, selected: id === a.scenarioId }, `L${s.level} · ${s.title}`)));
     const pads = PAD_ORDER.filter((p) => a.checkpoints[E.CHECKPOINTS[Object.keys(E.CHECKPOINTS).find((k) => E.CHECKPOINTS[k].pad === p)!].id]).map((p) => {
@@ -241,13 +254,34 @@ export class Train {
     });
     const places = el('div', { class: 'places' }, ...([['staging', 'Zone II staging'], ['corridor', 'Zone III corridor'], ['door', 'Zone IV door'], ['zone4', 'Magnet room'], ['record', 'Console']] as const)
       .map(([k, label]) => el('button', { class: 'btn small', onclick: () => { this.scene?.setDoor(k === 'zone4'); this.ctx.director.fly(SHOTS[k]); if (k === 'record') this.openRecord(); } }, label)));
+    const drill = el('button', { class: 'btn small', onclick: () => this.startDrill() }, 'Quench drill');
     this.panel.replaceChildren(
       el('h4', {}, 'Scenario'), scen,
       el('div', { class: 'score' }, el('span', {}, 'Score'), el('b', {}, String(a.score())), el('span', {}, 'Critical'), el('b', { class: a.criticalCount() ? 'warn' : '' }, String(a.criticalCount()))),
       ...(hint ? [el('div', { class: 'hint' }, el('b', {}, 'Next step'), hint.text)] : []),
       el('h4', {}, 'Checkpoints'), ...pads,
       el('button', { class: 'padrow reset', onclick: () => this.pad('T6') }, el('span', { class: 'pad' }, 'T6'), el('span', { class: 'pt' }, el('b', {}, 'Reset attempt')), el('span', {})),
-      el('h4', {}, 'Go to'), places);
+      el('h4', {}, 'Go to'), places,
+      el('h4', {}, 'Emergency'), el('div', { class: 'places' }, drill));
+  }
+
+  private drill: { dispose(): void } | null = null;
+  /** Quench with a blocked vent: three decisions while the room fills (separate from the assessor). */
+  private startDrill() {
+    this.drill?.dispose();
+    this.scene?.setDoor(false);
+    this.ctx.layers.setHidden([], CEILING);
+    this.ctx.director.fly({ eye: [1.75, 2.3, 2.3], target: [-0.12, 2.55, -0.45], via: [[-1.35, 1.66, 5.6], [-1.35, 1.6, 4.1]] });
+    this.feedback.replaceChildren();
+    this.drill = runQuenchDrill(this.ctx, this.body, () => {
+      this.body.append(el('div', { class: 'row' }, el('button', { class: 'btn small', onclick: () => this.endDrill() }, 'Back to the scenario')));
+    });
+  }
+  private endDrill() {
+    this.drill?.dispose(); this.drill = null;
+    this.ctx.layers.setHidden([]);
+    this.view = { kind: 'intro' }; this.renderView();
+    this.ctx.director.fly(SHOTS.corridor);
   }
 
   private showOutcome(out: Outcome) {
