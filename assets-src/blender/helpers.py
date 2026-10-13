@@ -13,7 +13,11 @@ SEGS = 128
 SHROUD_A, SHROUD_B, SHROUD_N, SHROUD_D = 1.12, 1.10, 4.2, 0.84
 
 
-def coll(name="Scanner"):
+TARGET = "Scanner"      # collection new objects go into; room scripts set TARGET = "Room"
+
+
+def coll(name=None):
+    name = name or TARGET
     sc = bpy.context.scene
     c = bpy.data.collections.get(name) or bpy.data.collections.new(name)
     if c.name not in [x.name for x in sc.collection.children]:
@@ -99,6 +103,18 @@ def lathe(name, prof, mat, parent=None, segs=SEGS, arc=(0.0, 2 * math.pi), close
     for p in me.polygons:
         p.use_smooth = smooth
     return _link(bpy.data.objects.new(name, me), parent, mat)
+
+
+def restand(o, x, y, z0):
+    """Turn a lathe (revolved about the bore axis Y at ISO) into one standing vertically at (x, y),
+    profile 'y' becoming height above z0. The axis swap mirrors winding, so normals are recomputed."""
+    for v in o.data.vertices:
+        vx, vy, vz = v.co.x, v.co.y, v.co.z - ISO
+        v.co = (x + vx, y + vz, z0 + vy)
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(o.data); bm.free()
+    return o
 
 
 def ring(rin, rout, y0, y1, ch=0.0):
@@ -201,9 +217,69 @@ def cylinder(name, r, depth, loc, mat, parent=None, axis="Z", verts=48, bevel=0.
     return _link(o, parent, mat)
 
 
+def box(name, size, loc, mat, parent=None):
+    """Plain axis-aligned box, scale applied (walls, slabs, panels)."""
+    replace(name)
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    o = bpy.context.active_object
+    o.name = name
+    for c in list(o.users_collection):
+        c.objects.unlink(o)
+    o.scale = size
+    o.location = loc
+    with bpy.context.temp_override(active_object=o, object=o, selected_editable_objects=[o]):
+        bpy.ops.object.transform_apply(scale=True)
+    return _link(o, parent, mat)
+
+
+def merged_boxes(name, items, mat, parent=None):
+    """Many axis-aligned boxes [(size, loc), ...] as ONE mesh (ceiling grid, seam battens, slats)."""
+    replace(name)
+    from mathutils import Matrix
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    for (sx, sy, sz), loc in items:
+        m = Matrix.Translation(loc) @ Matrix.Diagonal((sx, sy, sz, 1.0))
+        bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+    bm.to_mesh(me)
+    bm.free()
+    return _link(bpy.data.objects.new(name, me), parent, mat)
+
+
+def cut_openings(obj, cutters, prefix="Open"):
+    """Boolean the given cutter objects out of obj (doors, windows). Cutters are hidden helpers."""
+    for i, c in enumerate(cutters):
+        c.display_type = "WIRE"; c.hide_render = True; c.hide_set(True)
+        m = obj.modifiers.get(f"{prefix}_{i}") or obj.modifiers.new(f"{prefix}_{i}", "BOOLEAN")
+        m.object = c; m.operation = "DIFFERENCE"; m.solver = "EXACT"
+
+
+FONTS = {"regular": r"C:\Windows\Fonts\arial.ttf", "bold": r"C:\Windows\Fonts\arialbd.ttf"}
+
+
+def text(name, body, size, loc, rot, mat, parent=None, weight="regular", align="CENTER", extrude=0.0004):
+    """Sign lettering as a real mesh (converted from a text curve) so it survives glTF export."""
+    replace(name)
+    path = FONTS[weight]
+    font = next((f for f in bpy.data.fonts if f.filepath == path), None) or bpy.data.fonts.load(path)
+    cu = bpy.data.curves.new(name, "FONT")
+    cu.body = body; cu.font = font; cu.size = size; cu.extrude = extrude
+    cu.align_x = align; cu.align_y = "CENTER"
+    o = bpy.data.objects.new(name, cu)
+    coll().objects.link(o)
+    o.location = loc; o.rotation_euler = rot
+    with bpy.context.temp_override(selected_objects=[o], selected_editable_objects=[o], active_object=o, object=o):
+        bpy.ops.object.convert(target="MESH")
+    o = bpy.data.objects[name]
+    o.data.materials.clear(); o.data.materials.append(mat)
+    if parent is not None:
+        o.parent = parent
+    return o
+
+
 def cutaway(on):
     """Toggle the quarter-section booleans (Blender-side preview only; the engine clips at runtime)."""
-    for o in coll().objects:
+    for o in coll("Scanner").objects:
         for m in o.modifiers:
             if m.name == "Cutaway":
                 m.show_viewport = on

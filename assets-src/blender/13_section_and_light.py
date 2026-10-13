@@ -50,8 +50,7 @@ for o in coll().objects:
 
 # --- studio light (stand-in until the room exists) -----------------------------------------
 sc = bpy.context.scene
-for nm in ("Key", "Fill", "Rim"):
-    replace(nm)
+STUDIO = bpy.data.collections.get("Room") is None      # once the room exists, its LED panels light the scene
 def area(name, loc, target, power, sx, sy, color=(1, 1, 1)):
     replace(name)
     l = bpy.data.lights.get(name) or bpy.data.lights.new(name, "AREA")
@@ -59,18 +58,19 @@ def area(name, loc, target, power, sx, sy, color=(1, 1, 1)):
     o = bpy.data.objects.new(name, l); sc.collection.objects.link(o)
     o.location = loc; aim(o, target)
     return o
-area("Ceiling_panel_A", (0.0, -1.6, 3.0), (0.0, -1.6, 0.0), 650, 1.2, 2.4, (1.0, 0.98, 0.95))
-area("Ceiling_panel_B", (0.0, 1.4, 3.0), (0.0, 1.4, 0.0), 350, 1.2, 1.8, (1.0, 0.98, 0.95))
-area("Key_soft", (3.6, -3.4, 2.2), (0.0, -0.6, 1.0), 380, 2.0, 2.0, (0.97, 0.98, 1.0))
-area("Fill_cool", (-3.8, -2.0, 1.6), (0.0, 0.0, 1.0), 120, 3.0, 2.0, (0.90, 0.95, 1.0))
-
-w = sc.world
-bg = next(n for n in w.node_tree.nodes if n.type == "BACKGROUND")
-bg.inputs[0].default_value = (0.72, 0.75, 0.77, 1); bg.inputs[1].default_value = 0.35
-
-floor = bpy.data.objects.get("Floor_ref")
-fb = next(n for n in floor.data.materials[0].node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-fb.inputs["Base Color"].default_value = (0.46, 0.48, 0.47, 1); fb.inputs["Roughness"].default_value = 0.42
+if STUDIO:
+    for nm in ("Key", "Fill", "Rim"):
+        replace(nm)
+    area("Ceiling_panel_A", (0.0, -1.6, 3.0), (0.0, -1.6, 0.0), 650, 1.2, 2.4, (1.0, 0.98, 0.95))
+    area("Ceiling_panel_B", (0.0, 1.4, 3.0), (0.0, 1.4, 0.0), 350, 1.2, 1.8, (1.0, 0.98, 0.95))
+    area("Key_soft", (3.6, -3.4, 2.2), (0.0, -0.6, 1.0), 380, 2.0, 2.0, (0.97, 0.98, 1.0))
+    area("Fill_cool", (-3.8, -2.0, 1.6), (0.0, 0.0, 1.0), 120, 3.0, 2.0, (0.90, 0.95, 1.0))
+    bg = next(n for n in sc.world.node_tree.nodes if n.type == "BACKGROUND")
+    bg.inputs[0].default_value = (0.72, 0.75, 0.77, 1); bg.inputs[1].default_value = 0.35
+    floor = bpy.data.objects.get("Floor_ref")
+    if floor is not None:
+        fb = next(n for n in floor.data.materials[0].node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        fb.inputs["Base Color"].default_value = (0.46, 0.48, 0.47, 1); fb.inputs["Roughness"].default_value = 0.42
 
 # painted white GRP sits near 0.8 albedo, not 0.86; brighter clips under AgX
 cb = next(n for n in bpy.data.materials["Cover_GlossABS"].node_tree.nodes if n.type == "BSDF_PRINCIPLED")

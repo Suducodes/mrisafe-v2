@@ -23,10 +23,12 @@ export class Stage {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--paper').trim());
 
-    // Scanner isocentre sits at the origin, 1.0 m above the floor. Metres throughout.
-    this.camera.position.set(4.2, 1.7, 5.2);
+    // Metres throughout; floor at y = 0, isocentre at (0, 1.05, 0), table toward +z.
+    // Opening shot = Blender's ColdOpen_cam: behind the operator in the control room, through the RF glass.
+    this.camera.fov = 42;
+    this.camera.position.set(-5.18, 1.70, 2.05);
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.set(0, 1.0, 0);
+    this.controls.target.set(0.30, 1.18, 0.80);
     this.controls.enableDamping = true;
 
     addEventListener('resize', () => this.resize());
@@ -34,7 +36,8 @@ export class Stage {
     this.renderer.setAnimationLoop(() => { this.controls.update(); this.renderer.render(this.scene, this.camera); });
   }
 
-  async loadScanner(url: string) {
+  /** Load one streamed asset (scanner, suite, ...) and register its L_* peel layers. */
+  async loadAsset(url: string) {
     const gltf = await new GLTFLoader().loadAsync(url);
     gltf.scene.traverse((o) => { if (o.name.startsWith('L_')) this.layers.set(o.name.slice(2), o); });
     this.scene.add(gltf.scene);
