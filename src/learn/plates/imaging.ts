@@ -136,7 +136,7 @@ export const kspace: Plate = ({ stage, root, audio }) => {
     .filter((m): m is THREE.Mesh => !!m).map((mesh) => {
       const orig = mesh.material as THREE.MeshStandardMaterial;
       const mat = orig.clone(); mat.emissive = new THREE.Color(1, 0.55, 0.28); mat.emissiveIntensity = 0;
-      mat.onBeforeCompile = orig.onBeforeCompile; mat.customProgramCacheKey = orig.customProgramCacheKey; mat.clippingPlanes = orig.clippingPlanes;
+      mat.onBeforeCompile = orig.onBeforeCompile; mat.customProgramCacheKey = orig.customProgramCacheKey;
       mesh.material = mat;
       return { mat, restore: () => { mesh.material = orig; mat.dispose(); } };
     });

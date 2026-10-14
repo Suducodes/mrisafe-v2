@@ -78,21 +78,15 @@ export class App {
     const { renderer, scene, camera, composer } = this.stage;
     const hall = this.studio.group, was = hall.visible;
     hall.visible = true;
-    // everything goes through the composer's scene target: those programs differ from on-screen ones
-    // (tone mapping and the sRGB conversion happen later, in the output pass)
-    const intoTarget = <T>(f: () => T) => {
+    // both render paths: the canvas (tone mapping in the material) and the post chain's HDR target
+    // (tone mapping later, in the output pass) need their own program for every material
+    const targets = [null, composer.readBuffer];
+    const each = <T>(f: () => T) => targets.map((t) => {
       const prev = renderer.getRenderTarget();
-      renderer.setRenderTarget(composer.readBuffer);
+      renderer.setRenderTarget(t);
       try { return f(); } finally { renderer.setRenderTarget(prev); }
-    };
-    await this.layers.warmUp(
-      () => intoTarget(() => renderer.compileAsync(scene, camera)),
-      () => {
-        const culled: THREE.Object3D[] = [];
-        scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
-        intoTarget(() => renderer.render(scene, camera));
-        for (const o of culled) o.frustumCulled = true;
-      });
+    });
+    await this.layers.warmUp(() => Promise.all(each(() => renderer.compileAsync(scene, camera))));
     hall.visible = was;
     // and the post chain, bloom included (it first runs at the first peel)
     const bloom = this.stage.bloom, on = bloom.enabled;

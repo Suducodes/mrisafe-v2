@@ -44,7 +44,7 @@ export async function loadBakedLighting(renderer: THREE.WebGLRenderer, scene: TH
     tex.flipY = false;                       // glTF UV convention
     tex.colorSpace = THREE.SRGBColorSpace;   // the bake stores sRGB-encoded irradiance / scale
     tex.channel = 1;                         // TEXCOORD_1 = the "Lightmap" UV map
-    tex.anisotropy = Math.min(8, maxAniso);
+    tex.anisotropy = Math.min(16, maxAniso);  // floors and walls are seen at grazing angles when walking
     // three: indirectDiffuse = irradiance * albedo / pi; Cycles' diffuse pass is already "* albedo"
     atlases.set(name, { tex, intensity: Math.PI * a.scale });
   }));

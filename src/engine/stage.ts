@@ -43,17 +43,31 @@ export class Stage {
     this.fxaa.material.uniforms.resolution.value.set(1 / (w * this.ratio), 1 / (h * this.ratio));
   }
 
+  /**
+   * Two paths. At rest the scene renders straight to the canvas with its 4x MSAA (8-bit, cheap, and
+   * sharp: tone mapping happens in each material). While something dissolves, the post chain runs
+   * instead (HDR target, bloom for the nano seam, tone mapping, FXAA). Measured on Intel UHD at
+   * 1080p, MSAA on the half-float target cost ~8 ms a frame, SMAA ~10 ms, FXAA ~4 ms. Materials keep
+   * a program for each path, so switching never recompiles (both are built in the warm-up).
+   */
+  post = false;
+  /** Orbit controls drive the camera (off while walking). */
+  orbitActive = true;
+  /** Vertical field of view at 16:9 (wider while walking). */
+  baseFov = 42;
+
+  private render(dt: number) {
+    if (this.post) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
+  }
+
   constructor(canvas: HTMLCanvasElement) {
-    // the canvas only receives the composer's final full-screen quad, so its own MSAA would be wasted;
-    // edges are anti-aliased by FXAA at the end of the chain. Measured on Intel UHD at 1080p:
-    // 4x MSAA on the HDR target ~8 ms a frame, SMAA ~10 ms, FXAA ~4 ms
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(this.ratio);
     // filmic curve with real contrast (plain AgX read flat and washed out on the web)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 2 ** -1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.localClippingEnabled = true;               // the live cutaway
     this.composer = new EffectComposer(this.renderer);      // HDR (half float) scene target
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.42, 0.45, 3.2);
@@ -77,15 +91,19 @@ export class Stage {
     addEventListener('resize', () => this.resize());
     this.resize();
     this.renderer.setAnimationLoop(() => {
-      const dt = Math.min(this.clock.getDelta(), 0.1);
+      const raw = this.clock.getDelta();
+      const dt = Math.min(raw, 0.1);
       const t = this.clock.elapsedTime;
       for (const h of this.hooks) h(dt, t);
       this.applyOffset(dt);
-      this.controls.update();
-      this.composer.render(dt);
-      this.adaptResolution(dt);
+      if (this.orbitActive) this.controls.update();
+      this.render(dt);
+      this.adaptResolution(raw);
     });
   }
+
+  /** Apply a new base field of view (walk mode widens it). */
+  setFov(deg: number) { this.baseFov = deg; this.resize(); }
 
   /** Exposure in EV (the suite and the studio use different values). */
   set exposureEV(ev: number) { this.renderer.toneMappingExposure = 2 ** ev; }
@@ -98,14 +116,15 @@ export class Stage {
    * display, where text-like edges start to smear.
    */
   private adaptResolution(dt: number) {
-    if (document.hidden || dt <= 0) return;
+    // a stall (shader compile, tab switch, a throttled background pane) is not the GPU being slow
+    if (document.hidden || dt <= 0 || dt > 0.2 || performance.now() < this.holdUntil) return;
     this.frameMs += (dt * 1000 - this.frameMs) * 0.06;
     this.sinceAdjust += dt;
     const floor = Math.max(0.75, this.maxRatio * 0.6);
     let next = this.ratio;
     if (this.frameMs > 24 && this.sinceAdjust > 1.5) next = Math.max(floor, this.ratio - 0.125);
     else if (this.frameMs < 17.5 && this.sinceAdjust > 4 && this.ratio < this.maxRatio
-      && (this.failedAt === null || this.ratio + 0.125 < this.failedAt || performance.now() - this.failedTime > 60_000)) {
+      && (this.failedAt === null || this.ratio + 0.125 < this.failedAt || performance.now() - this.failedTime > 20_000)) {
       next = Math.min(this.maxRatio, this.ratio + 0.125);
     }
     if (next === this.ratio) return;
@@ -118,6 +137,13 @@ export class Stage {
   }
   private failedAt: number | null = null;
   private failedTime = 0;
+  private holdUntil = 0;
+  /** Start measuring afresh, after a pause in which frames say nothing about the GPU (loading). */
+  settleResolution(ms = 3000) {
+    this.holdUntil = performance.now() + ms; this.frameMs = 16; this.sinceAdjust = 0;
+    this.failedAt = null;
+    if (this.ratio !== this.maxRatio) { this.ratio = this.maxRatio; this.renderer.setPixelRatio(this.ratio); this.composer.setPixelRatio(this.ratio); this.syncFxaa(); }
+  }
 
   /** Test harness: run every frame hook at a fixed 60 Hz for `seconds`, then render once.
    *  Gives deterministic frames when the page is not being animated (hidden, headless). */
@@ -126,9 +152,9 @@ export class Stage {
     for (let t = 0; t < seconds; t += dt) {
       for (const h of this.hooks) h(dt, this.clock.elapsedTime + t);
       this.applyOffset(dt);
-      this.controls.update();
+      if (this.orbitActive) this.controls.update();
     }
-    this.composer.render(1 / 60);
+    this.render(1 / 60);
   }
 
   /** Current render scale and smoothed frame time, for the quality readout. */
@@ -185,10 +211,10 @@ export class Stage {
     this.syncFxaa();
     const aspect = w / h;
     this.camera.aspect = aspect;
-    // 42 deg vertical at 16:9; on narrower screens hold that horizontal coverage instead
-    const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(21)) * (16 / 9));
-    this.camera.fov = aspect >= 16 / 9 ? 42 : 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(halfH) / aspect));
-    this.camera.fov = Math.min(this.camera.fov, 75);
+    // baseFov vertical at 16:9; on narrower screens hold that horizontal coverage instead
+    const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2)) * (16 / 9));
+    this.camera.fov = aspect >= 16 / 9 ? this.baseFov : 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(halfH) / aspect));
+    this.camera.fov = Math.min(this.camera.fov, 80);
     this.camera.updateProjectionMatrix();
   }
 }

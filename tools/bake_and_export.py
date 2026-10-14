@@ -18,7 +18,8 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else "assets-src/build")
 QUICK = "--quick" in argv
 SAMPLES = 48 if QUICK else 512
-ATLAS = {"room": 1024 if QUICK else 2048, "scanner": 1024 if QUICK else 2048}
+# the room atlas spreads over ~200 m2 of surface: 4096 keeps contact shadows and corners crisp
+ATLAS = {"room": 1024 if QUICK else 4096, "scanner": 1024 if QUICK else 2048}
 PROBE_AT = (0.9, -2.2, 1.5)                 # Blender coords: in front of the table, eye height
 os.makedirs(OUT, exist_ok=True)
 sc = bpy.context.scene
@@ -135,6 +136,15 @@ for o in export_objects("Room") + export_objects("Scanner"):
 for g, objs in groups.items():
     log(f"group {g}: {len(objs)} objects")
 
+# Things that move or hide at runtime (Train wheels equipment between zones, hides what a scenario
+# does not use, and shows the patient only in Train) must not leave baked shadows behind: they would
+# stay on the bench and the floor as dark ghosts. They get live soft contact shadows in the engine.
+MOVABLE = {"equipment", "patient"}
+movable = [o for o in export_objects("Room") + export_objects("Scanner") if layer_of(o) in MOVABLE]
+for o in movable:
+    o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
+log("movable objects kept out of the bake:", len(movable))
+
 def lightmap_uvs(objs):
     for o in objs:
         uv = o.data.uv_layers
@@ -226,7 +236,7 @@ for g, objs in groups.items():
 
 
 # --- 4. reflection probe -----------------------------------------------------------------------
-hidden = [o for o in export_objects("Scanner") if not o.hide_render]
+hidden = [o for o in export_objects("Scanner") + movable if not o.hide_render]
 for o in hidden:
     o.hide_render = True                      # the scanner must not reflect itself
 cam = bpy.data.objects.new("_probe", bpy.data.cameras.new("_probe")); sc.collection.objects.link(cam)

@@ -24,7 +24,11 @@ if (missing.length) {
   startConsole(stage);
   const app = new App(stage, document.getElementById('ui')!, lighting?.probe ?? null);
   status.textContent = 'Preparing the scanner…';
+  const warm = performance.now();
   await app.warmUp();
+  if (import.meta.env.DEV) console.info(`[warm-up] ${(performance.now() - warm).toFixed(0)} ms, ${stage.renderer.info.programs?.length} programs`);
+  stage.settleResolution();                                 // the compile stalls said nothing about the GPU
+  addEventListener('visibilitychange', () => { if (!document.hidden) stage.settleResolution(); });
   status.textContent = '';
   app.start();
   if (import.meta.env.DEV) Object.assign(window, { __stage: stage, __app: app, __THREE: await import('three') });

@@ -77,7 +77,6 @@ export const gradients: Plate = ({ stage, root, audio }) => {
     const orig = mesh.material as THREE.MeshStandardMaterial;
     const mat = orig.clone(); mat.emissive = new THREE.Color(1.0, 0.55, 0.28); mat.emissiveIntensity = 0;
     mat.onBeforeCompile = orig.onBeforeCompile; mat.customProgramCacheKey = orig.customProgramCacheKey;
-    mat.clippingPlanes = orig.clippingPlanes;                  // clone() copies planes; share them so the cut still animates
     mesh.material = mat;
     glow[axis] = { mat, restore: () => { mesh.material = orig; mat.dispose(); } };
   }

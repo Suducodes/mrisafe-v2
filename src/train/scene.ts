@@ -50,11 +50,53 @@ export class TrainScene {
       const m = stage.scene.getObjectByName(n) as THREE.Mesh | undefined;
       if (m) { const mat = (m.material as THREE.MeshStandardMaterial).clone(); m.material = mat; this.fmd.push(mat); }
     }
+    this.addContactShadows();
     this.highlight = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.37, 64), new THREE.MeshBasicMaterial({ color: 0x1b2124, transparent: true, opacity: 0.0, depthWrite: false }));
     this.highlight.rotation.x = -Math.PI / 2; this.highlight.renderOrder = 2;
     stage.scene.add(this.highlight);
     stage.onFrame((dt) => this.tick(dt));
   }
+
+  /**
+   * Equipment moves between zones (and a scenario hides what it does not use), so its shadows are
+   * not baked: each item carries a soft contact shadow of its own footprint that travels with it.
+   */
+  private addContactShadows() {
+    const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d')!, grad = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    grad.addColorStop(0, 'rgba(0,0,0,0.62)'); grad.addColorStop(0.45, 'rgba(0,0,0,0.38)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, S, S);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x000000, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    for (const o of this.items.values()) {
+      o.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(o), size = box.getSize(new THREE.Vector3()), at = box.getCenter(new THREE.Vector3());
+      const root = o.getWorldPosition(new THREE.Vector3());
+      const blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+      blob.rotation.x = -Math.PI / 2;
+      blob.scale.set(size.x * 1.35 + 0.12, size.z * 1.35 + 0.12, 1);
+      blob.position.set(at.x - root.x, box.min.y - root.y + 0.003, at.z - root.z);
+      blob.raycast = () => {}; blob.userData.blob = true; blob.renderOrder = 1;
+      o.add(blob);
+      o.userData.foot = { dx: at.x - root.x, dz: at.z - root.z, base: box.min.y - root.y, r: Math.max(size.x, size.z) * 0.45 };
+    }
+  }
+
+  /** Centre and radius of every item standing on the floor, for walking around them. */
+  obstacles() {
+    const out: { x: number; z: number; r: number }[] = [];
+    const p = new THREE.Vector3();
+    for (const o of this.items.values()) {
+      const f = o.userData.foot;
+      if (!o.visible || !f) continue;
+      o.getWorldPosition(p);
+      if (p.y + f.base > 0.3) continue;                   // sitting on the bench: the bench already blocks
+      out.push({ x: p.x + f.dx, z: p.z + f.dz, r: f.r });
+    }
+    return out;
+  }
+
+  get replaying() { return this.replay !== null; }
 
   /** Item zones as the scenario sets them; snaps (no animation). */
   place(zones: Partial<Record<ItemId, ZoneId>>) {
@@ -102,6 +144,7 @@ export class TrainScene {
     const ghost = o.clone(true);
     ghost.traverse((n) => {
       const m = n as THREE.Mesh;
+      if (m.userData.blob) { m.visible = false; return; }
       if (m.isMesh) { const mat = (m.material as THREE.MeshStandardMaterial).clone(); mat.transparent = true; mat.opacity = 0.85; m.material = mat; }
     });
     const start = new THREE.Vector3(-1.35, 0, 4.35);            // released just inside the RF door

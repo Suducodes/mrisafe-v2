@@ -242,3 +242,53 @@ body, .card, .index, .modebar button, .callout { transition: background-color .8
 
 :where(button, select, input, summary):focus-visible { outline: 2px solid var(--field); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* --- Train walk mode: objective, waypoint, hover label, controls ------------------------- */
+.objective { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 6; max-width: min(560px, calc(100vw - 760px));
+  min-width: 320px; padding: 10px 16px 11px; border-radius: 12px; background: rgba(16, 20, 22, .86); color: #eef3f4;
+  box-shadow: 0 10px 30px rgba(0,0,0,.28); backdrop-filter: blur(8px); text-align: center; pointer-events: none; }
+.objective .obj-step { font: 500 10.5px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #7fd3ff; }
+.objective .obj-text { font: 600 16px/1.35 var(--sans); margin-top: 4px; }
+.objective .obj-how { font-size: 13px; line-height: 1.4; color: #b9c6ca; margin-top: 3px; }
+.objective .obj-how:empty { display: none; }
+.objective.pulse { animation: obj-pulse .9s ease-out; }
+@keyframes obj-pulse { 0% { box-shadow: 0 0 0 0 rgba(95,208,255,.65), 0 10px 30px rgba(0,0,0,.28); } 100% { box-shadow: 0 0 0 14px rgba(95,208,255,0), 0 10px 30px rgba(0,0,0,.28); } }
+@media (max-width: 1100px) { .objective { max-width: calc(100vw - 32px); top: 58px; } }
+
+.waypoint { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none; width: 0; height: 0; }
+.waypoint .wp-ring { position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; border-radius: 50%;
+  border: 2.5px solid #5fd0ff; box-shadow: 0 0 12px rgba(95,208,255,.8), inset 0 0 8px rgba(95,208,255,.5); animation: wp-beat 1.4s ease-in-out infinite; }
+.waypoint .wp-ring::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #5fd0ff; }
+.waypoint .wp-arrow { display: none; position: absolute; left: -11px; top: -11px; width: 22px; height: 22px;
+  transform: rotate(var(--angle, 0rad)); }
+.waypoint .wp-arrow::before { content: ''; position: absolute; left: 22px; top: 3px; border: 8px solid transparent; border-left: 13px solid #5fd0ff; filter: drop-shadow(0 0 4px rgba(95,208,255,.9)); }
+.waypoint .wp-label { position: absolute; left: 22px; top: -11px; white-space: nowrap; padding: 3px 8px; border-radius: 6px;
+  background: rgba(16,20,22,.85); color: #eef3f4; font: 500 12px/1.4 var(--sans); }
+.waypoint.edge .wp-ring { width: 22px; height: 22px; left: -11px; top: -11px; }
+.waypoint.edge .wp-arrow { display: block; }
+.waypoint.edge .wp-label { top: 14px; left: -40px; }
+@keyframes wp-beat { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.18); opacity: .75; } }
+
+.hover-tip { position: fixed; left: 0; top: 0; z-index: 7; pointer-events: none; padding: 4px 9px; border-radius: 6px;
+  background: rgba(16,20,22,.9); color: #eef3f4; font: 500 12.5px/1.4 var(--sans); white-space: nowrap; }
+
+.walk-legend { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 4; display: flex; gap: 14px; align-items: center;
+  padding: 6px 12px; border-radius: 10px; background: rgba(16,20,22,.72); color: #c9d4d7; font-size: 12px; pointer-events: none; white-space: nowrap; }
+.walk-legend span { display: inline-flex; gap: 3px; align-items: center; }
+kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(255,255,255,.28); border-bottom-width: 2px;
+  background: rgba(255,255,255,.08); font: 600 11px/1.4 var(--mono); text-align: center; color: inherit; }
+@media (max-width: 1100px) { .walk-legend { display: none; } }
+
+.walk-help { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20; width: min(460px, calc(100vw - 32px));
+  padding: 22px 24px 20px; border-radius: 16px; background: rgba(16,20,22,.94); color: #eef3f4; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+.walk-help h3 { margin: 0 0 6px; font: 600 20px/1.2 var(--sans); }
+.walk-help p { margin: 0 0 14px; color: #b9c6ca; font-size: 14px; }
+.walk-help ul { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 9px; }
+.walk-help li { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; font-size: 13.5px; color: #dbe4e6; }
+.walk-help .keys { display: flex; gap: 4px; }
+.walk-help .mouse { padding: 1px 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,.28); font: 600 11px/1.4 var(--mono); }
+.walk-help .btn.primary { width: 100%; background: #5fd0ff; border-color: #5fd0ff; color: #0d1214; font-weight: 600; }
+body.mode-train.walking #stage { cursor: grab; }
+body.mode-train.walking #stage:active { cursor: grabbing; }
+body.mode-train.walking.can-use #stage { cursor: pointer; }
+.objective[hidden], .waypoint[hidden], .hover-tip[hidden], .walk-legend[hidden], .walk-help[hidden] { display: none; }

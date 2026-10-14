@@ -1,4 +1,4 @@
-# MRISafe Twin v2: handoff
+﻿# MRISafe Twin v2: handoff
 
 ## Who and why
 - The original is **MRISafe Twin** by Allwyn Sir (Sudarshan's professor): https://allwyn3t6.github.io/MRI---safe-train/ (repo owner: Allwyn3t6).
@@ -13,27 +13,32 @@
 - **Run:**
   - `npm run dev`: the dev server. The parent `.claude/launch.json` entry is `mrisafe-v2`, on port 5191.
   - `npm run build`, then `npm run preview`: the production build, on port 5192 (`mrisafe-v2-dist`).
-- **Assets:** `npm run build:assets` runs a headless Blender bake (OptiX) plus Meshopt, about 6 minutes; `-Quick` takes about 2 minutes.
+- **Assets:** `npm run build:assets` runs a headless Blender bake (OptiX) plus Meshopt, about 12 minutes (room atlas 4096); `-Quick` takes about 2 minutes.
+  - Equipment and the patient are kept out of the bake (no shadows, no bounce): they move or hide at runtime and left dark ghost shadows. They get live contact shadows in `train/scene.ts`.
   - The model rebuilds from the scripts `assets-src/blender/01..26`.
   - The run order is in `assets-src/README.md`.
 - **Learn:**
   - **Cold open:** a flight through the RF glass. The room then dissolves in nanotech tiles and the scanner stands in a dark studio hall. It is peeled down to the windings, then reassembled.
-  - **Studio hall (`src/engine/studio.ts`):** the room layers stay hidden in Learn. A graphite floor, grid, fog, contact shadow, three spots and a softbox environment crossfade with the baked suite rig (exposure, bloom threshold, lightmap scale, IBL).
+  - **Studio hall (`src/engine/studio.ts`):** the room layers stay hidden in Learn. A graphite floor (one shader: light pools, shadow, fog, grid), sky and a softbox environment crossfade with the baked suite rig (exposure, bloom threshold, lightmap scale, IBL).
     - ch07 and ch13 bring the suite back (`env: 'suite'` in `chapters.ts`).
     - The dark console theme is `body.theme-dark`.
-    - Keep the studio lights in the scene at intensity 0. Removing them changes the light count, and every material recompiles mid-fade.
+    - There are no three.js lights anywhere. The hall's key and rims are softboxes in the environment (`KEYS` in `studio.ts`); every light would cost every material per pixel, in the suite too.
   - **Nano peel (`src/engine/patches.ts` + `layers.ts`):** a single `onBeforeCompile` patch composes the baked lighting and the dissolve.
     - Triplanar hex plates with glowing rims, a lit seam and darkening near the front.
-    - GPU particles sampled from each layer's surface. `prewarm()` builds them in idle time.
-    - Bloom (UnrealBloom, in `stage.ts`) picks up only the HDR seam. On the Intel UHD at 1800×1012 it costs about 4 ms of an 18 ms frame.
+    - GPU particles sampled from each layer's surface.
+    - The dissolve and the quarter section (`CUT`) are compiled in only while a layer is live (`setNanoLive`): a `discard` turns off early depth rejection. Draw order is outside in (`DRAW_ORDER`).
+    - Bloom runs only while something dissolves. At rest the scene renders straight to the canvas with 4x MSAA; during a dissolve, the post chain (HDR, bloom, FXAA). `App.warmUp()` compiles every variant (lean/live x canvas/HDR) in parallel behind the loading line.
+  - **Surface detail (`DETAIL` in `patches.ts`, `FINISH` in `layers.ts`):** procedural, world-space finishes by material name (vinyl, paint, ceiling tile, brushed metal, copper, oak, fabric, coat), driven by a 256 px tiling noise texture.
   - **Chapters:** 14, in sir's words, each with a camera shot, peel, cutaway, callouts and a live instrument:
     - assembly
-    - Biot–Savart field lines, the 5 G floor line and the wrench projectile
+    - Biotâ€“Savart field lines, the 5 G floor line and the wrench projectile
     - cryostat, shim map, gradient pulses and knocks, RF cage reveal
     - spin ensemble and spin echo, T1/T2 relaxation
     - slice selection, k-space with sound and artefacts
     - quench, quiz
 - **Train:**
+  - **Walk mode (`input/walk.ts`):** W A S D / arrows, Shift to run, drag to look, click the floor to walk there. Collisions against a 4 cm floor plan rasterised once from the geometry; equipment is avoided live; the RF door opens as you approach.
+  - **Guide (`train/guide.ts`):** objective bar from sir's `nextHint()` plus how to do it here, a waypoint marker on the target (edge arrow when off-screen), hover labels, and a controls card (H).
   - Sir's engine is unmodified, playing out in the Zone II/III/IV corridor and staging bay with his five items and the patient under a blanket.
   - Hints, violations with their evidence, the projectile replay for blocked MR Unsafe moves, the table sliding into the bore on T5, and a report with his adaptive recommendation and JSON/CSV export.
   - A quench drill, illustrative and scored separately.
@@ -44,17 +49,17 @@
 - **Hands:**
   - Sir's MediaPipe hand control: vendored library and his gesture logic.
   - The model file `hand_landmarker.task` isn't downloaded yet. It loads from Google's storage at runtime, or can be saved into `public/models/` for offline use.
-- **Verification:** with the browser pane hidden, use `__stage.advance(seconds)` in dev to step frames deterministically, then screenshot.
+- **Verification:** with the browser pane hidden, use `__stage.advance(seconds)` in dev to step frames deterministically, then screenshot. Set `__stage.holdUntil = Infinity` first: a hidden pane throttles the loop, and the resolution controller would read that as a slow GPU.
+- **Performance (Intel UHD, 1920x1080, GPU timer queries):** Train staging view ~16 ms, Learn hall hero ~8 ms. The user's laptop also has an RTX 5060 that the browser does not use by default (Windows graphics setting per app).
 - **Not done yet:**
-  - A first-person free walk (zone-to-zone camera hops for now).
   - A live console UI on the control-room monitors.
   - KTX2 textures (`toktx` isn't installed).
 
 ## What the current site does (audited 2026-10-13 in browser)
 - Home page with Train/Learn cards. The status chips (controller, coach) are fine.
 - **Learn:** a 14-chapter list, a 3D cutaway (peel layers, explode, labels, patient) and a text panel. Live Larmor, slice and FFT values. Coach and quiz.
-- **Train:** scenario dropdown (L2 Standard pre-scan), checkpoints T1–T6, a 3D suite with zones, an inspector, a rule-based assessor with evidence, an event log, and a trainer report.
-- **Input:** ESP32-S3 controller (6 touch pads, MPU9250 tilt/tap/flick, magnetometer "wand meter"), MediaPipe hand tracking, and keys 1–6.
+- **Train:** scenario dropdown (L2 Standard pre-scan), checkpoints T1â€“T6, a 3D suite with zones, an inspector, a rule-based assessor with evidence, an event log, and a trainer report.
+- **Input:** ESP32-S3 controller (6 touch pads, MPU9250 tilt/tap/flick, magnetometer "wand meter"), MediaPipe hand tracking, and keys 1â€“6.
 - **Problems:**
   - The 3D sits in a cramped centre column, squeezed between panels.
   - Labels overlap and get clipped.
@@ -69,8 +74,8 @@
 **Core idea:** the scanner itself is the interface. A real-looking suite at true scale. Every visual comes from real physics.
 
 - **Asset pipeline:**
-  - Model everything in Blender: a real layer stack (covers → gradient former → cryostat → 4 K He vessel → NbTi windings → shims), RF body and head coils, the table.
-  - Build the full suite: control room glass, Faraday cage, penetration panel, quench pipe, Zone I–IV.
+  - Model everything in Blender: a real layer stack (covers â†’ gradient former â†’ cryostat â†’ 4 K He vessel â†’ NbTi windings â†’ shims), RF body and head coils, the table.
+  - Build the full suite: control room glass, Faraday cage, penetration panel, quench pipe, Zone Iâ€“IV.
   - Bake lightmaps and AO. Export glTF with Meshopt and KTX2, streamed per chapter, with a first paint under 5 MB.
   - Use real ASTM F2503 signage.
 - **Render engine:**
@@ -78,8 +83,8 @@
   - AgX tone mapping, HDRI, SSAO, TAA, restrained bloom.
   - A spline camera director, a clipping and peel system driven by data, and quality tiers.
 - **Physics core** (workers + GPU):
-  - Biot–Savart field from the coil geometry, stored as a 3D texture. It drives field lines, the 5-gauss floor line, spatial gradient maps and projectile force (∝ B·∇B).
-  - A GPU Bloch sim with 10k–50k spins.
+  - Biotâ€“Savart field from the coil geometry, stored as a 3D texture. It drives field lines, the 5-gauss floor line, spatial gradient maps and projectile force (âˆ BÂ·âˆ‡B).
+  - A GPU Bloch sim with 10kâ€“50k spins.
   - A sequence engine (SE, GRE, EPI as data).
   - k-space plus FFT recon with injectable artefacts.
   - Larmor, SAR and dB/dt calculators.
@@ -88,7 +93,7 @@
 - **Training engine:**
   - Port sir's assessor intact.
   - Add a first-person walk through Zones I to IV, with a ferromagnetic detector at the door.
-  - Show consequences honestly: the projectile effect from the real force curve, and a quench (vent plume, frost, O₂ alarm).
+  - Show consequences honestly: the projectile effect from the real force curve, and a quench (vent plume, frost, Oâ‚‚ alarm).
 - **Audio:**
   - Gradient waveforms synthesize the scanner sound (EPI buzz vs SE knock).
   - Cold-head chirp ambience, room tone, alarms.

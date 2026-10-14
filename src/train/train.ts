@@ -7,12 +7,16 @@ import { TrainScene, SHOTS, type ItemId, type ZoneId } from './scene';
 import { showReport } from './report';
 import { runQuenchDrill } from './drill';
 import { CEILING } from '../learn/chapters';
+import { Walker } from '../input/walk';
+import { Guide } from './guide';
+import { ROOM_LAYERS } from '../engine/layers';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Outcome = any;
 const E = ENGINE;
 const PAD_ORDER = ['T1', 'T2', 'T3', 'T4', 'T5'];
 const LABEL_TEXT: Record<string, string> = { MR_SAFE: 'MR Safe', MR_CONDITIONAL: 'MR Conditional', MR_UNSAFE: 'MR Unsafe' };
+const DOOR = { x: -1.35, z: 4.4 };          // the RF door in the Zone III / Zone IV wall
 
 /** Small inline ASTM-style mark for the inspector (simplified rendering, as on the signs). */
 function mark(label: string | null) {
@@ -35,6 +39,8 @@ export class Train {
   private active = false;
   private down: { x: number; y: number } | null = null;
   private tableIn = 0;
+  private readonly guide: Guide;
+  private readonly walker: Walker;
 
   constructor(private readonly ctx: Omit<PlateCtx, 'root'>, private readonly callouts: Callouts, host: HTMLElement) {
     this.panel = el('nav', { class: 'index procedure', 'aria-label': 'Procedure' });
@@ -56,13 +62,102 @@ export class Train {
       if (id && this.attempt.items[id]) this.openItem(id);
       else if (this.scene.isPatient(e.clientX, e.clientY)) this.openPatient();
       else if (this.isConsole(e.clientX, e.clientY)) this.openRecord();
+      else this.walker.clickTo(e.clientX, e.clientY);
+    });
+    // what is under the cursor and can be used: a label and a pointing hand
+    let lastHover = 0;
+    canvas.addEventListener('pointermove', (e) => {
+      if (!this.active || !this.scene || e.buttons || performance.now() - lastHover < 80) return;
+      lastHover = performance.now();
+      const label = this.usable(e.clientX, e.clientY);
+      document.body.classList.toggle('can-use', !!label);
+      this.guide.hover(label, e.clientX, e.clientY);
+    });
+    canvas.addEventListener('pointerleave', () => this.guide.hover(null));
+
+    this.guide = new Guide(ctx.stage, host);
+    this.walker = new Walker(ctx.stage, ctx.director, {
+      colliders: () => {
+        const out: THREE.Mesh[] = [];
+        for (const [name, root] of ctx.stage.layers) {
+          if (name === 'equipment' || name === 'patient') continue;     // they move: handled live
+          root.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (!m.isMesh || m.userData.isCap) return;
+            for (let p: THREE.Object3D | null = m; p; p = p.parent) if (p.name === 'Door_pivot') return;   // opens as you come
+            out.push(m);
+          });
+        }
+        return out;
+      },
+      bounds: () => {
+        const b = new THREE.Box3();
+        for (const l of ROOM_LAYERS) { const r = ctx.stage.layers.get(l); if (r) b.expandByObject(r); }
+        return b.expandByScalar(0.3);
+      },
+      dynamic: () => this.scene?.obstacles() ?? [],
     });
     addEventListener('keydown', (e) => {
       if (!this.active || (e.target as HTMLElement).closest('input, textarea, select')) return;
       const n = Number(e.key);
       if (n >= 1 && n <= 6) this.pad(`T${n}`, 'kbd');
     });
-    ctx.stage.onFrame((dt) => this.slideTable(dt));
+    ctx.stage.onFrame((dt) => { this.slideTable(dt); this.autoDoor(); });
+  }
+
+  /** The RF door opens as you walk up to it and closes behind you. */
+  private autoDoor() {
+    if (!this.active || !this.walker.active || !this.scene || this.scene.replaying || this.ctx.director.flying) return;
+    const p = this.walker.position;
+    this.scene.setDoor(Math.hypot(p.x - DOOR.x, p.z - DOOR.z) < 1.9);
+  }
+
+  /** Label for whatever usable thing is under the cursor. */
+  private usable(x: number, y: number): string | null {
+    const id = this.scene!.itemAt(x, y);
+    if (id && this.attempt.items[id]) return `${E.ITEMS[id].name} · click to inspect`;
+    if (this.scene!.isPatient(x, y)) return 'Patient · click for the door check';
+    if (this.isConsole(x, y)) return 'Console · click to open the patient record';
+    return null;
+  }
+
+  /** The objective bar: the engine's next hint (in scenarios that give hints), and how to do it here. */
+  private updateObjective() {
+    const a = this.attempt;
+    const order: string[] = a.order;
+    const done = order.filter((id) => a.checkpoints[id].status === 'done').length;
+    if (a.status !== 'active') {
+      this.guide.set({ step: 'Attempt complete', text: 'Every checkpoint is attested.', how: 'Your report opens in a moment. Pick another scenario on the left to go again.', target: null, label: '' });
+      return;
+    }
+    const hint = a.nextHint();
+    const cpId: string = hint?.checkpoint ?? order.find((id) => a.checkpoints[id].status !== 'done')!;
+    const def = E.CHECKPOINTS[cpId];
+    const step = `Step ${Math.min(done + 1, order.length)} of ${order.length} · ${def.pad} ${def.title}`;
+    if (!a.scenario.hints || !hint) {
+      this.guide.set({ step, text: def.detail ?? def.title, how: 'Assessment: no hints and no marker. When the step is complete, attest it with its pad.', target: null, label: '' });
+      return;
+    }
+    const top = (o: THREE.Object3D | undefined | null, lift = 0.18) => {
+      if (!o) return null;
+      const b = new THREE.Box3().setFromObject(o);
+      return new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y + lift, (b.min.z + b.max.z) / 2);
+    };
+    const f: string = hint.focus ?? '';
+    const scene = this.ctx.stage.scene;
+    if (f === 'record') {
+      this.guide.set({ step, text: hint.text, how: 'Walk into the control room and click the console screens.', target: top(scene.getObjectByName('Mon_console_L_body')), label: 'Console' });
+    } else if (f === 'patient') {
+      this.guide.set({ step, text: hint.text, how: 'Go through the RF door into the magnet room and click the patient on the table.', target: top(scene.getObjectByName('Patient_blanket'), 0.3), label: 'Patient' });
+    } else if (f.startsWith('pad:')) {
+      const pad = f.slice(4);
+      this.guide.set({ step, text: hint.text, how: `Press ${pad.slice(1)} on the keyboard, or click ${pad} in the Checkpoints list on the left.`, target: null, label: '' });
+    } else if (E.ITEMS[f]) {
+      const o = this.scene?.items.get(f as ItemId);
+      this.guide.set({ step, text: hint.text, how: 'Find it at the blue marker and click it. Read its label, then classify and move it in the panel on the right.', target: top(o), label: E.ITEMS[f].name });
+    } else {
+      this.guide.set({ step, text: hint.text, how: '', target: null, label: '' });
+    }
   }
 
   private get attempt() { return this.session.current; }
@@ -85,11 +180,18 @@ export class Train {
     this.renderPanel();
     this.view = { kind: 'intro' };
     this.renderView();
+    document.body.classList.add('walking');
+    this.walker.enable();
+    this.guide.show(true);
+    this.updateObjective();
     await this.ctx.director.fly({ ...SHOTS.corridor, via: [[-4.4, 1.62, 3.4], [-4.6, 1.62, 4.9]] });
   }
 
   leave() {
     this.active = false;
+    this.walker.disable();
+    this.guide.show(false);
+    document.body.classList.remove('walking', 'can-use');
     this.drill?.dispose(); this.drill = null;
     this.panel.hidden = true;
     this.card.classList.add('out');
@@ -238,6 +340,7 @@ export class Train {
   }
 
   private renderPanel() {
+    this.updateObjective();
     const a = this.attempt, hint = a.scenario.hints ? a.nextHint() : null;
     const done = Object.values(a.checkpoints).filter((c: any) => c.status === 'done').length;
     this.scoreEl.textContent = `${a.scenario.title} · score ${a.score()} · ${done}/${Object.keys(a.checkpoints).length} checkpoints`;

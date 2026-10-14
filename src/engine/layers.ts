@@ -1,7 +1,20 @@
 import * as THREE from 'three';
 import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js';
 import type { Stage } from './stage';
-import { nanoUniforms, patchMaterial, setNanoLive, type NanoUniforms } from './patches';
+import { nanoUniforms, patchMaterial, setNanoLive, DETAIL, CUT, type NanoUniforms } from './patches';
+
+/** Which real finish each material is (by its Blender name), for the surface detail. */
+const FINISH: [RegExp, number][] = [
+  [/Floor_Vinyl/, DETAIL.vinyl],
+  [/Wall_Paint|Door_Face_Paint|Ctrl_Partition/i, DETAIL.paint],
+  [/Ceiling_Tile|Ctrl_Ceiling/, DETAIL.tile],
+  [/Cage_Copper|FingerStock/, DETAIL.copper],
+  [/Stainless|Chrome|Cladding_Al|Galvanised|Hose_Braid|ThermalShield_Al|Aluminium|Steel/i, DETAIL.brushed],
+  [/Oak/, DETAIL.oak],
+  [/Fabric|Mattress/i, DETAIL.fabric],
+  [/PowderCoat|Laminate|GlossABS|Satin|Locker|Frame|Desk_Edge|GRP/i, DETAIL.coat],
+];
+const finishOf = (name: string) => FINISH.find(([re]) => re.test(name))?.[1] ?? DETAIL.none;
 
 /** Scanner layers in the order they are built, outside in (bore-side parts last). */
 export const SCANNER_LAYERS = [
@@ -16,10 +29,11 @@ const ISO = new THREE.Vector3(0, 1.05, 0);
 // hex tile size per layer: fine on the machine, coarse on walls
 const TILE: Record<string, number> = { room_finish: 0.12, rf_cage: 0.12, control_room: 0.11, zones: 0.11, room_fixtures: 0.06, room_services: 0.06, room_signage: 0.04, equipment: 0.05 };
 // opaque draw order, outside in: whatever covers a layer is drawn before it, so the depth test
-// rejects the hidden nested shells before they are shaded (walls last: they fill what is left)
+// rejects the hidden nested shells before they are shaded (then the walls, then what is behind them)
 const DRAW_ORDER: Record<string, number> = {
   covers: 1, coldhead: 1, table: 1, rf_head_coil: 1, patient: 1, liner: 2, rf_body_coil: 3, rf_shield: 4,
-  gradient: 5, shims: 6, cryostat: 7, thermal_shield: 8, he_vessel: 9, windings: 10, room_finish: 12,
+  gradient: 5, shims: 6, cryostat: 7, thermal_shield: 8, he_vessel: 9, windings: 10, room_finish: 11,
+  rf_cage: 13,                // the copper behind the wall finish: drawn after it, so it is never shaded
 };
 
 interface Anim { mode: 1 | 0; progress: number; dir: 1 | -1; seconds: number }
@@ -40,8 +54,8 @@ interface LayerState {
 }
 
 /** Hatched section cap: drawn on back faces exposed by the cut, so shells read as solid. */
-function capMaterial(color: THREE.Color, planes: THREE.Plane[], nano: NanoUniforms) {
-  const m = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, clippingPlanes: planes, clipIntersection: true });
+function capMaterial(color: THREE.Color, nano: NanoUniforms) {
+  const m = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
   patchMaterial(m, { nano, live: true, extra: (s) => {
     s.fragmentShader = s.fragmentShader.replace('#include <color_fragment>',
       '#include <color_fragment>\n' +
@@ -81,6 +95,8 @@ function particleMaterial(nano: NanoUniforms) {
         float r = length(gl_PointCoord - 0.5) * 2.0;
         if (r > 1.0) discard;
         gl_FragColor = vec4(uNanoColor * 0.22, 1.0) * pow(1.0 - r, 2.0) * vAlpha;
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
   });
 }
@@ -88,8 +104,8 @@ function particleMaterial(nano: NanoUniforms) {
 export class LayerSystem {
   private readonly states = new Map<string, LayerState>();
   private readonly hiddenObjects = new Map<string, THREE.Object3D>();
-  /** Quarter cutaway: removes x > 0 and y > isocentre (both, hence clipIntersection). */
-  private readonly planes = [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 100), new THREE.Plane(new THREE.Vector3(0, -1, 0), 100)];
+  /** Quarter cutaway: removes x > cutX and y > cutY (both). Applied in the live programs (patches.ts CUT). */
+  private readonly planes = [{ constant: 100 }, { constant: 100 }];
   private cut = 0;            // 0 closed .. 1 open
   private cutTarget = 0;
   private readonly cutMeshes = new Set<THREE.Object3D>();
@@ -104,6 +120,7 @@ export class LayerSystem {
       const caps: THREE.Mesh[] = [];
       const clones = new Map<string, THREE.Material>();
       const cuttable = CUT_LAYERS.has(name);
+      nano.uNanoCut.value = cuttable ? 1 : 0;
       root.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh || mesh.userData.isCap) return;
@@ -113,16 +130,15 @@ export class LayerSystem {
           m = src.clone();
           if (cuttable) {
             m.side = THREE.FrontSide;                          // closed shells; back faces become caps
-            m.clipIntersection = true;                         // planes attach only while live
           }
-          patchMaterial(m, { baked: !!src.userData.patch?.baked, nano });
+          patchMaterial(m, { baked: !!src.userData.patch?.baked, nano, detail: finishOf(src.name) });
           clones.set(src.uuid, m); materials.push(m);
         }
         mesh.material = m;
-        mesh.renderOrder = DRAW_ORDER[name] ?? 11;
+        mesh.renderOrder = DRAW_ORDER[name] ?? 12;
         if (cuttable) {
           this.cutMeshes.add(mesh);
-          const cap = new THREE.Mesh(mesh.geometry, capMaterial(capColour((m as THREE.MeshStandardMaterial).color), this.planes, nano));
+          const cap = new THREE.Mesh(mesh.geometry, capMaterial(capColour((m as THREE.MeshStandardMaterial).color), nano));
           cap.userData.isCap = true; cap.visible = false; cap.raycast = () => {};
           mesh.add(cap); caps.push(cap);
         }
@@ -148,10 +164,7 @@ export class LayerSystem {
     // the layer's own materials and any a plate has swapped in for the moment (they borrow the hooks)
     const mats = new Set(s.materials);
     s.root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.isCap) mats.add(m.material as THREE.Material); });
-    for (const m of mats) {
-      setNanoLive(m, live);
-      if (s.cuttable && m.userData.patch) m.clippingPlanes = live ? this.planes : null;
-    }
+    for (const m of mats) setNanoLive(m, live);
   }
 
   /**
@@ -159,7 +172,7 @@ export class LayerSystem {
    * setups, particles, caps, the hidden patient) while the loading line is still up, so nothing
    * compiles in the middle of an animation. Compiles in parallel where the driver allows it.
    */
-  async warmUp(compile: () => Promise<unknown>, render: () => void) {
+  async warmUp(compile: () => Promise<unknown>) {
     const restore: [THREE.Object3D, boolean][] = [];
     const show = (o: THREE.Object3D) => { restore.push([o, o.visible]); o.visible = true; };
     for (const s of this.states.values()) {
@@ -171,7 +184,6 @@ export class LayerSystem {
     for (const live of [true, false]) {
       for (const s of this.states.values()) this.forceLive(s, live);
       await compile();     // parallel, where the driver allows it
-      render();            // and a real render for what compile() keys differently (clipping state)
     }
     for (const [o, v] of restore) o.visible = v;
     for (const s of this.states.values()) {
@@ -181,10 +193,7 @@ export class LayerSystem {
   }
 
   private forceLive(s: LayerState, live: boolean) {
-    for (const m of s.materials) {
-      setNanoLive(m, live);
-      if (s.cuttable) m.clippingPlanes = live ? this.planes : null;
-    }
+    for (const m of s.materials) setNanoLive(m, live);
     s.live = live;
   }
 
@@ -269,7 +278,7 @@ export class LayerSystem {
 
   setCut(open: boolean) {
     this.cutTarget = open ? 1 : 0;
-    // planes attach now, before the sweep starts (and before a plate clones a material)
+    // go live now, before the sweep starts (and before a plate clones a material)
     if (open) for (const s of this.states.values()) this.updateLive(s);
   }
 
@@ -302,6 +311,7 @@ export class LayerSystem {
       // planes sweep in from outside the scanner to the isocentre axes
       this.planes[0].constant = this.cut === 0 ? 100 : THREE.MathUtils.lerp(1.4, 0, k);
       this.planes[1].constant = this.cut === 0 ? 100 : THREE.MathUtils.lerp(2.6, 1.05, k);
+      CUT.uCut.value.set(this.planes[0].constant, this.planes[1].constant);
       for (const s of this.states.values()) for (const c of s.caps) c.visible = this.cut > 0;
       if (this.cut === 0) for (const s of this.states.values()) this.updateLive(s);   // closed: back to lean
     }
@@ -309,6 +319,7 @@ export class LayerSystem {
     this.glow = THREE.MathUtils.clamp(this.glow + (this.busy ? dt : -dt) / 0.35, 0, 1);
     this.stage.bloom.strength = 0.42 * this.glow;
     this.stage.bloom.enabled = this.glow > 0;
+    this.stage.post = this.glow > 0;                         // at rest: straight to the MSAA canvas
   }
   private glow = 0;
 }
