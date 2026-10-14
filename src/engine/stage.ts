@@ -7,6 +7,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 export type FrameHook = (dt: number, t: number) => void;
 
@@ -35,20 +37,30 @@ export class Stage {
   readonly composer: EffectComposer;
   /** Bloom picks up only HDR values above its threshold: nano seams, particles, screens. */
   readonly bloom: UnrealBloomPass;
+  private readonly fxaa: ShaderPass;
+  private syncFxaa() {
+    const { innerWidth: w, innerHeight: h } = window;
+    this.fxaa.material.uniforms.resolution.value.set(1 / (w * this.ratio), 1 / (h * this.ratio));
+  }
 
   constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // the canvas only receives the composer's final full-screen quad, so its own MSAA would be wasted;
+    // edges are anti-aliased by FXAA at the end of the chain. Measured on Intel UHD at 1080p:
+    // 4x MSAA on the HDR target ~8 ms a frame, SMAA ~10 ms, FXAA ~4 ms
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(this.ratio);
     // filmic curve with real contrast (plain AgX read flat and washed out on the web)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 2 ** -1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.localClippingEnabled = true;               // the live cutaway
-    this.composer = new EffectComposer(this.renderer);
+    this.composer = new EffectComposer(this.renderer);      // HDR (half float) scene target
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.42, 0.45, 3.2);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());                // tone mapping + sRGB after the bloom
+    this.fxaa = new ShaderPass(FXAAShader);                  // on display values, where edge contrast is judged
+    this.composer.addPass(this.fxaa);
 
     // neutral stand-in until the baked room probe replaces it
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -79,21 +91,33 @@ export class Stage {
   set exposureEV(ev: number) { this.renderer.toneMappingExposure = 2 ** ev; }
   get exposureEV() { return Math.log2(this.renderer.toneMappingExposure); }
 
-  /** Step the render resolution toward ~30-60 fps, with hysteresis so it does not hunt. */
+  /**
+   * Keep the frame rate up by trading resolution, without hunting: drop a step when frames run long
+   * for a while, and try a step up only after a long smooth stretch. A step that failed is not
+   * retried for a minute, so the image does not keep going soft and sharp. Never below 0.75x the
+   * display, where text-like edges start to smear.
+   */
   private adaptResolution(dt: number) {
-    this.frameMs += (dt * 1000 - this.frameMs) * 0.08;
+    if (document.hidden || dt <= 0) return;
+    this.frameMs += (dt * 1000 - this.frameMs) * 0.06;
     this.sinceAdjust += dt;
-    if (this.sinceAdjust < 1.2) return;
+    const floor = Math.max(0.75, this.maxRatio * 0.6);
     let next = this.ratio;
-    if (this.frameMs > 30) next = Math.max(0.6, this.ratio - 0.15);
-    else if (this.frameMs < 15 && this.ratio < this.maxRatio) next = Math.min(this.maxRatio, this.ratio + 0.1);
-    if (next !== this.ratio) {
-      this.ratio = next;
-      this.renderer.setPixelRatio(next);
-      this.composer.setPixelRatio(next);
-      this.sinceAdjust = 0;
+    if (this.frameMs > 24 && this.sinceAdjust > 1.5) next = Math.max(floor, this.ratio - 0.125);
+    else if (this.frameMs < 17.5 && this.sinceAdjust > 4 && this.ratio < this.maxRatio
+      && (this.failedAt === null || this.ratio + 0.125 < this.failedAt || performance.now() - this.failedTime > 60_000)) {
+      next = Math.min(this.maxRatio, this.ratio + 0.125);
     }
+    if (next === this.ratio) return;
+    if (next < this.ratio) { this.failedAt = this.ratio; this.failedTime = performance.now(); }
+    this.ratio = next;
+    this.renderer.setPixelRatio(next);
+    this.composer.setPixelRatio(next);
+    this.syncFxaa();
+    this.sinceAdjust = 0;
   }
+  private failedAt: number | null = null;
+  private failedTime = 0;
 
   /** Test harness: run every frame hook at a fixed 60 Hz for `seconds`, then render once.
    *  Gives deterministic frames when the page is not being animated (hidden, headless). */
@@ -158,6 +182,7 @@ export class Stage {
     const { innerWidth: w, innerHeight: h } = window;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
+    this.syncFxaa();
     const aspect = w / h;
     this.camera.aspect = aspect;
     // 42 deg vertical at 16:9; on narrower screens hold that horizontal coverage instead

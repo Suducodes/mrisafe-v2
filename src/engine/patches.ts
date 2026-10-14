@@ -88,20 +88,29 @@ export interface PatchOptions {
   key?: string;
 }
 
-/** Compose the patches on a material (Standard/Physical, or Basic for caps and screens). */
-export function patchMaterial(m: THREE.Material, opts: PatchOptions) {
+/**
+ * Compose the patches on a material (Standard/Physical, or Basic for caps and screens).
+ *
+ * The dissolve code is compiled in only while the material is "live" (`setNanoLive`): a shader that
+ * can `discard` turns off early depth rejection, and then every hidden layer nested inside the covers
+ * is fully shaded every frame. At rest the lean program runs; both variants stay cached on the
+ * material (three keeps one program per cache key), so switching never recompiles. The live flag is
+ * read from the material the hooks are called on, so clones that borrow these hooks keep working.
+ */
+export function patchMaterial(m: THREE.Material, opts: PatchOptions & { live?: boolean }) {
   const baked = !!opts.baked, nano = opts.nano ?? null;
-  m.userData.patch = { baked, nano };
+  m.userData.patch = { baked, nano: !!nano };
+  m.userData.nanoLive = !!opts.live;
   const isStandard = (m as THREE.MeshStandardMaterial).isMeshStandardMaterial;
-  m.onBeforeCompile = (shader) => {
+  m.onBeforeCompile = function (this: THREE.Material, shader) {
     if (baked && isStandard) {
       Object.assign(shader.uniforms, GLOBAL);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform float uIblDiffuse, uLightmapScale;')
         .replace('#include <lights_fragment_maps>', LIGHTS_MAPS_BAKED);
     }
-    if (nano) {
-      Object.assign(shader.uniforms, nano);
+    if (nano) Object.assign(shader.uniforms, nano);   // always: the uniform set must cover both variants
+    if (nano && this.userData.nanoLive) {
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vNanoPos;\nvarying vec3 vNanoNrm;')
         .replace('#include <project_vertex>', '#include <project_vertex>\nvNanoPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNanoNrm = normalize(mat3(modelMatrix) * normal);');   // the attribute: Basic materials have no objectNormal
@@ -116,7 +125,16 @@ export function patchMaterial(m: THREE.Material, opts: PatchOptions) {
     }
     opts.extra?.(shader);
   };
-  m.customProgramCacheKey = () => `patch:${baked ? 'b' : ''}${nano ? 'n' : ''}:${opts.key ?? ''}`;
+  m.customProgramCacheKey = function (this: THREE.Material) {
+    return `patch:${baked ? 'b' : ''}${nano && this.userData.nanoLive ? 'n' : ''}:${opts.key ?? ''}`;
+  };
   m.needsUpdate = true;
   return m;
+}
+
+/** Switch a patched material between its lean (at rest) and live (dissolving / sectioned) program. */
+export function setNanoLive(m: THREE.Material, live: boolean) {
+  if (!m.userData.patch?.nano || !!m.userData.nanoLive === live) return;
+  m.userData.nanoLive = live;
+  m.needsUpdate = true;
 }

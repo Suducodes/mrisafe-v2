@@ -21,9 +21,11 @@ const missing = assets.filter((_, i) => results[i].status === 'rejected');
 if (missing.length) {
   status.textContent = `Missing ${missing.join(', ')} (run tools/build-assets.ps1)`;
 } else {
-  status.textContent = '';
   startConsole(stage);
   const app = new App(stage, document.getElementById('ui')!, lighting?.probe ?? null);
+  status.textContent = 'Preparing the scanner…';
+  await app.warmUp();
+  status.textContent = '';
   app.start();
   if (import.meta.env.DEV) Object.assign(window, { __stage: stage, __app: app, __THREE: await import('three') });
 }

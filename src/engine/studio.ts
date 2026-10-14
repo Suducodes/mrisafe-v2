@@ -56,28 +56,13 @@ function sky() {
   }));
 }
 
-function grid() {
-  return new THREE.Mesh(new THREE.PlaneGeometry(140, 140), new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, fog: false,
-    vertexShader: 'varying vec2 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: /* glsl */ `
-      varying vec2 vW;
-      float line(vec2 p, float step) { vec2 g = abs(fract(p / step - 0.5) - 0.5) * step / fwidth(p); return 1.0 - min(min(g.x, g.y), 1.0); }
-      void main() {
-        float r = length(vW);
-        float fade = 1.0 - smoothstep(5.0, 32.0, r);
-        float a = (line(vW, 0.5) * 0.07 + line(vW, 5.0) * 0.16) * fade;
-        gl_FragColor = vec4(0.55, 0.68, 0.74, a);
-      }`,
-  }));
-}
-
-/** Soft shadow footprints of the gantry and the table, blurred once on a canvas. */
-function contactShadow() {
-  const S = 512, SIZE = 9;                       // texture covers 9 x 9 m around the scanner
+/** Soft shadow footprints of the gantry and the table, blurred once on a canvas (alpha = shadow). */
+const SHADOW_SIZE = 9;                           // the texture covers 9 x 9 m around the scanner
+function shadowTexture() {
+  const S = 512;
   const c = document.createElement('canvas'); c.width = c.height = S;
   const g = c.getContext('2d')!;
-  const px = (m: number) => (m / SIZE) * S;
+  const px = (m: number) => (m / SHADOW_SIZE) * S;
   const at = (x: number, z: number) => [S / 2 + px(x), S / 2 + px(z)];
   g.filter = 'blur(16px)';
   g.fillStyle = 'rgba(0,0,0,0.85)';
@@ -86,11 +71,65 @@ function contactShadow() {
   rect(0, 1.93, 0.62, 1.7);                       // table pedestal
   g.filter = 'blur(42px)'; g.fillStyle = 'rgba(0,0,0,0.45)';
   rect(0, 0.6, 3.0, 4.2);                         // broad ambient occlusion
-  const tex = new THREE.CanvasTexture(c);
-  // the canvas alpha is the shadow (map alpha multiplies opacity); colour stays black
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color: 0x000000 }));
-  m.rotation.x = -Math.PI / 2; m.position.y = 0.002;
-  return m;
+  return new THREE.CanvasTexture(c);
+}
+
+/**
+ * The hall floor in one pass: satin graphite lit by the studio spots and the hemisphere light
+ * (the same physically based falloff three.js uses, Lambert plus a soft sheen), the contact
+ * shadow, fog, and the technical grid. A PBR floor with a grid and a shadow sheet over it cost
+ * three full-screen layers on integrated graphics; this costs one cheap one.
+ */
+function floorMaterial(shadow: THREE.Texture) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uAlbedo: { value: new THREE.Color(0x15191b) },
+      uShadow: { value: shadow },
+      uSpotPos: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] },
+      uSpotDir: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] },
+      uSpotCol: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color()] },
+      uSpotCone: { value: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()] },   // cos(angle), cos(penumbra start)
+      uHemi: { value: new THREE.Color() },
+      uFogColor: { value: new THREE.Color() },
+      uFogDensity: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vW; varying float vDepth;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz;
+        vec4 mv = viewMatrix * w; vDepth = -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uAlbedo, uHemi, uFogColor;
+      uniform sampler2D uShadow;
+      uniform vec3 uSpotPos[3], uSpotDir[3], uSpotCol[3];
+      uniform vec2 uSpotCone[3];
+      uniform float uFogDensity;
+      varying vec3 vW; varying float vDepth;
+      float line(vec2 p, float step) { vec2 g = abs(fract(p / step - 0.5) - 0.5) * step / fwidth(p); return 1.0 - min(min(g.x, g.y), 1.0); }
+      void main() {
+        vec3 V = normalize(cameraPosition - vW);
+        vec3 diffuse = uHemi, sheen = vec3(0.0);
+        for (int i = 0; i < 3; i++) {
+          vec3 L = uSpotPos[i] - vW; float d = length(L); L /= d;
+          float spot = smoothstep(uSpotCone[i].x, uSpotCone[i].y, dot(L, uSpotDir[i]));
+          float fall = 1.0 / max(pow(d, 1.6), 0.01) * pow(clamp(1.0 - pow(d / 30.0, 4.0), 0.0, 1.0), 2.0);
+          vec3 E = uSpotCol[i] * spot * fall * L.y;                   // irradiance on the up-facing floor
+          diffuse += E;
+          sheen += E * pow(max(normalize(L + V).y, 0.0), 24.0) * 0.05;  // satin: a broad, faint highlight
+        }
+        vec3 c = uAlbedo * diffuse * 0.31831 + sheen;
+        vec2 uv = vec2(vW.x / ${SHADOW_SIZE.toFixed(1)} + 0.5, 0.5 - vW.z / ${SHADOW_SIZE.toFixed(1)});
+        float sh = all(greaterThan(uv, vec2(0.0))) && all(lessThan(uv, vec2(1.0))) ? texture2D(uShadow, uv).a : 0.0;
+        c *= 1.0 - sh;
+        float fog = 1.0 - exp(-uFogDensity * uFogDensity * vDepth * vDepth);
+        c = mix(c, uFogColor, fog);
+        float r = length(vW.xz);
+        float grid = (line(vW.xz, 0.5) * 0.07 + line(vW.xz, 5.0) * 0.16) * (1.0 - smoothstep(5.0, 32.0, r));
+        gl_FragColor = vec4(mix(c, vec3(0.55, 0.68, 0.74), grid), 1.0);
+      }`,
+  });
 }
 
 export class Studio {
@@ -100,14 +139,18 @@ export class Studio {
   private k = 0;
   private target = 0;
   private readonly fog = new THREE.FogExp2(0x0d1113, 0);
+  private readonly floorMat: THREE.ShaderMaterial;
 
   constructor(private readonly stage: Stage, private readonly probe: THREE.Texture | null) {
     this.env = softboxEnvironment(stage.renderer);
     stage.scene.fog = this.fog;                      // always present (density animates) so nothing recompiles
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 128), new THREE.MeshStandardMaterial({ color: 0x15191b, roughness: 0.55, metalness: 0, envMapIntensity: 0.16 }));   // satin: no mirror of the overhead softbox
+    this.floorMat = floorMaterial(shadowTexture());
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 128), this.floorMat);
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.004;
-    const gridMesh = grid(); gridMesh.rotation.x = -Math.PI / 2; gridMesh.position.y = 0.0;
-    this.group.add(sky(), floor, gridMesh, contactShadow());
+    // drawn after the machine (only the floor it does not cover gets shaded), the sky after everything
+    floor.renderOrder = 20;
+    const dome = sky(); dome.renderOrder = 21;
+    this.group.add(dome, floor);
     // the lights stay in the scene at all times (at zero in the suite): hiding them would change the
     // light count, and every lit material in the scene would recompile at each crossfade
     const rig = new THREE.Group();
@@ -148,5 +191,25 @@ export class Studio {
     this.fog.density = mix(SUITE.fog, STUDIO.fog);
     this.stage.controls.maxDistance = mix(9, 24);
     this.stage.scene.environment = k > 0.5 ? this.env : (this.probe ?? this.env);
+    this.syncFloor();
+  }
+
+  /** The floor shader lights itself from the rig's actual values. */
+  private syncFloor() {
+    const u = this.floorMat.uniforms;
+    let i = 0;
+    for (const { light } of this.lights) {
+      if (light instanceof THREE.SpotLight) {
+        u.uSpotPos.value[i].copy(light.position);
+        u.uSpotDir.value[i].copy(light.position).sub(light.target.position).normalize();
+        u.uSpotCol.value[i].copy(light.color).multiplyScalar(light.intensity);
+        u.uSpotCone.value[i].set(Math.cos(light.angle), Math.cos(light.angle * (1 - light.penumbra)));
+        i++;
+      } else if (light instanceof THREE.HemisphereLight) {
+        u.uHemi.value.copy(light.color).multiplyScalar(light.intensity);
+      }
+    }
+    u.uFogColor.value.copy(this.fog.color);
+    u.uFogDensity.value = this.fog.density;
   }
 }

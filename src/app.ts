@@ -36,7 +36,6 @@ export class App {
     this.layers = new LayerSystem(stage);
     this.layers.alwaysHidden.add('patient');               // the training patient appears only in Train
     this.layers.setHidden([], [], true);
-    this.layers.prewarm();
     this.studio = new Studio(stage, probe);
     this.director = new CameraDirector(stage);
     this.callouts = new Callouts(stage, host);
@@ -72,6 +71,32 @@ export class App {
     addEventListener('pointerdown', () => this.audio.ensure(), { once: true });
     this.director.cut(HOME_SHOT);
     this.setBodyMode('home');
+  }
+
+  /** Compile every shader the session can need before the first frame that needs it. */
+  async warmUp() {
+    const { renderer, scene, camera, composer } = this.stage;
+    const hall = this.studio.group, was = hall.visible;
+    hall.visible = true;
+    // everything goes through the composer's scene target: those programs differ from on-screen ones
+    // (tone mapping and the sRGB conversion happen later, in the output pass)
+    const intoTarget = <T>(f: () => T) => {
+      const prev = renderer.getRenderTarget();
+      renderer.setRenderTarget(composer.readBuffer);
+      try { return f(); } finally { renderer.setRenderTarget(prev); }
+    };
+    await this.layers.warmUp(
+      () => intoTarget(() => renderer.compileAsync(scene, camera)),
+      () => {
+        const culled: THREE.Object3D[] = [];
+        scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+        intoTarget(() => renderer.render(scene, camera));
+        for (const o of culled) o.frustumCulled = true;
+      });
+    hall.visible = was;
+    // and the post chain, bloom included (it first runs at the first peel)
+    const bloom = this.stage.bloom, on = bloom.enabled;
+    bloom.enabled = true; composer.render(0); bloom.enabled = on;
   }
 
   /**
