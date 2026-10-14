@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-
-/** Blender renders use -0.8 EV under AgX; match it so the bake reads the same on the web. */
-const EXPOSURE_EV = -0.8;
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 export type FrameHook = (dt: number, t: number) => void;
 
@@ -31,13 +32,23 @@ export class Stage {
   private readonly gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   private readonly clock = new THREE.Clock();
 
+  readonly composer: EffectComposer;
+  /** Bloom picks up only HDR values above its threshold: nano seams, particles, screens. */
+  readonly bloom: UnrealBloomPass;
+
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.toneMapping = THREE.AgXToneMapping;
-    this.renderer.toneMappingExposure = 2 ** EXPOSURE_EV;
+    // filmic curve with real contrast (plain AgX read flat and washed out on the web)
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 2 ** -1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.localClippingEnabled = true;               // the live cutaway
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.42, 0.45, 3.2);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());                // tone mapping + sRGB after the bloom
 
     // neutral stand-in until the baked room probe replaces it
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -59,10 +70,14 @@ export class Stage {
       for (const h of this.hooks) h(dt, t);
       this.applyOffset(dt);
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render(dt);
       this.adaptResolution(dt);
     });
   }
+
+  /** Exposure in EV (the suite and the studio use different values). */
+  set exposureEV(ev: number) { this.renderer.toneMappingExposure = 2 ** ev; }
+  get exposureEV() { return Math.log2(this.renderer.toneMappingExposure); }
 
   /** Step the render resolution toward ~30-60 fps, with hysteresis so it does not hunt. */
   private adaptResolution(dt: number) {
@@ -75,6 +90,7 @@ export class Stage {
     if (next !== this.ratio) {
       this.ratio = next;
       this.renderer.setPixelRatio(next);
+      this.composer.setPixelRatio(next);
       this.sinceAdjust = 0;
     }
   }
@@ -88,7 +104,7 @@ export class Stage {
       this.applyOffset(dt);
       this.controls.update();
     }
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render(1 / 60);
   }
 
   /** Current render scale and smoothed frame time, for the quality readout. */
@@ -141,6 +157,7 @@ export class Stage {
   private resize() {
     const { innerWidth: w, innerHeight: h } = window;
     this.renderer.setSize(w, h, false);
+    this.composer.setSize(w, h);
     const aspect = w / h;
     this.camera.aspect = aspect;
     // 42 deg vertical at 16:9; on narrower screens hold that horizontal coverage instead

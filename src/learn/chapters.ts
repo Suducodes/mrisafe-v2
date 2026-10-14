@@ -13,6 +13,7 @@ export interface Staging {
   cut?: boolean;             // quarter-section cutaway
   callouts?: Callout[];
   plate?: string;            // instrument module mounted in the card
+  env?: 'studio' | 'suite';  // default studio (the hall); 'suite' brings the real room back
 }
 
 const ISO = 1.05;
@@ -29,7 +30,7 @@ export const CEILING = ['Ceiling_tiles', 'Ceiling_grid', 'Diffuser_A', 'Diffuser
 export const HOME_SHOT: Shot = { eye: [-5.18, 1.70, 2.05], target: [0.30, 1.18, 0.80] };
 /** Into the magnet room through the RF window, the cold open's flight path. */
 export const THROUGH_GLASS: V3[] = [[-3.55, 1.62, 1.55], [-2.62, 1.55, 1.40], [-1.4, 1.62, 2.4]];
-const WIDE: Shot = { eye: [2.25, 1.65, 3.6], target: [-0.1, 1.0, 0.3] };
+const WIDE: Shot = { eye: [4.7, 2.35, 5.9], target: [0, 0.95, 0.45] };
 
 export const STAGING: Record<string, Staging> = {
   ch01: {
@@ -38,14 +39,13 @@ export const STAGING: Record<string, Staging> = {
       { text: 'Magnet in its cryostat', at: at(1.05, 1.45, 0.2), note: '1.5 T, always on' },
       { text: 'Patient table', at: at(0.27, 0.87, 2.3) },
       { text: 'Cold head', at: at(0.0, 2.37, -0.3) },
-      { text: 'Quench vent line', at: at(-0.16, 2.75, -0.44) },
-      { text: 'RF window to the control room', at: at(-2.6, 1.55, 1.4) },
-      { text: 'Penetration panel', at: at(1.25, 1.5, -2.25), note: 'filtered feed-throughs' },
+      { text: 'Head coil', at: at(0.0, 1.2, 1.1), note: 'receives the signal' },
+      { text: 'Gantry controls', at: at(0.8, 1.07, 0.86) },
     ],
   },
   ch02: { shot: { eye: [2.45, 1.95, 2.6], target: [0, 1.15, 0] }, cut: true, plate: 'assembly' },
   ch03: {
-    shot: { eye: [2.35, 2.55, 4.05], target: [-0.35, 0.85, 0.2] }, hide: COVERS, cut: true, plate: 'field',
+    shot: { eye: [6.4, 4.6, 7.4], target: [0, 0.55, 0.4] }, hide: COVERS, cut: true, plate: 'field',
     callouts: [
       { text: 'Primary coils (NbTi)', at: at(0, ISO + 0.60, 0.37), note: 'six, in liquid helium' },
       { text: 'Shield coils', at: at(0, ISO + 0.885, 0.56), note: 'current reversed' },
@@ -74,7 +74,7 @@ export const STAGING: Record<string, Staging> = {
     ],
   },
   ch07: {
-    shot: { eye: [0.48, 1.28, 1.6], target: [0, 1.05, 0] }, hide: [...COVERS, 'liner'], cut: true, plate: 'rf',
+    shot: { eye: [0.48, 1.28, 1.6], target: [0, 1.05, 0] }, hide: [...COVERS, 'liner'], cut: true, plate: 'rf', env: 'suite',
     callouts: [
       { text: 'Birdcage body coil', at: at(-0.26, ISO + 0.26, 0.3), note: '16 rungs' },
       { text: 'RF shield', at: at(-0.38, ISO - 0.02, 0.55) },
@@ -86,7 +86,7 @@ export const STAGING: Record<string, Staging> = {
   ch11: { shot: { eye: [1.35, 1.55, 1.75], target: [0, 1.05, -0.1] }, hide: COVERS, cut: true, plate: 'slice' },
   ch12: { shot: { eye: [1.15, 1.45, 2.05], target: [0, 1.1, 0] }, hide: [...COVERS, ...BORE_INNER, 'shims'], hideObjects: ['Gradient_former_epoxy'], cut: true, plate: 'kspace' },
   ch13: {
-    shot: { eye: [1.75, 2.3, 2.3], target: [-0.12, 2.55, -0.45] }, hideObjects: CEILING, plate: 'quench',
+    shot: { eye: [1.75, 2.3, 2.3], target: [-0.12, 2.55, -0.45] }, hideObjects: CEILING, plate: 'quench', env: 'suite',
     callouts: [
       { text: 'Quench vent line', at: at(-0.16, 3.22, -1.3), note: 'to outside' },
       { text: 'O₂ monitor', at: at(-1.0, 2.55, -2.17) },

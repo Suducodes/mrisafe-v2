@@ -93,7 +93,8 @@ export class Callouts {
       }
     }
     for (const p of pts) {
-      const vis = p.behind ? '0' : '1';
+      // a label that was not placed in a column this frame (behind, occluded, off-projection) stays hidden
+      const vis = p.behind || !Number.isFinite(p.x) || !Number.isFinite(p.y) ? '0' : '1';
       p.it.label.style.opacity = vis; p.it.line.style.opacity = vis; p.it.dot.style.opacity = vis;
     }
     const age = (performance.now() - this.shown) / 600;

@@ -28,7 +28,7 @@ paths, so `dist/` can be served from any folder (for example GitHub Pages).
 
 | Chapter | What the scanner does |
 |---|---|
-| Cold open | Through the control-room glass; the covers lift away layer by layer to the NbTi windings |
+| Cold open | Through the control-room glass; the room dissolves into glowing hex plates and falls away, leaving the scanner in a dark studio hall; the covers peel off layer by layer to the NbTi windings, then the machine builds itself back |
 | Assembly | Builds the magnet in factory order, in a live quarter section |
 | Magnet | Field lines and the 5 gauss floor line from a Biot–Savart model of the coils (turns solved for a flat field and a cancelled far-field dipole). Shielded vs unshielded, 0.5 / 1.5 / 3 T, and a steel wrench whose pull uses B·dB/dx |
 | Cryostat, shims, gradients, RF | Peeled layers with callouts; shim error map from the coil model; gradient coils pulse and knock; the copper cage behind the walls |
@@ -74,4 +74,7 @@ headless Blender (Cycles, GPU), exports the glTF files and Meshopt-compresses th
 ## Performance
 
 The renderer adapts its resolution to hold a steady frame rate on integrated graphics (most lab
-PCs). Lighting is baked, so the browser does very little lighting work at runtime.
+PCs). Lighting is baked, so the browser does very little lighting work at runtime. Learn plays in a
+studio hall (the room layers hidden, three spot lights and a softbox reflection environment); the
+chapters about the room bring the real suite back. Layers peel and reassemble with a shader dissolve
+(hex plates, a glowing seam, particles) and a light bloom pass that only catches the seam.

@@ -17,7 +17,15 @@
   - The model rebuilds from the scripts `assets-src/blender/01..26`.
   - The run order is in `assets-src/README.md`.
 - **Learn:**
-  - **Cold open:** a flight through the RF glass, the scanner peeled down to the windings, then reassembled.
+  - **Cold open:** a flight through the RF glass. The room then dissolves in nanotech tiles and the scanner stands in a dark studio hall. It is peeled down to the windings, then reassembled.
+  - **Studio hall (`src/engine/studio.ts`):** the room layers stay hidden in Learn. A graphite floor, grid, fog, contact shadow, three spots and a softbox environment crossfade with the baked suite rig (exposure, bloom threshold, lightmap scale, IBL).
+    - ch07 and ch13 bring the suite back (`env: 'suite'` in `chapters.ts`).
+    - The dark console theme is `body.theme-dark`.
+    - Keep the studio lights in the scene at intensity 0. Removing them changes the light count, and every material recompiles mid-fade.
+  - **Nano peel (`src/engine/patches.ts` + `layers.ts`):** a single `onBeforeCompile` patch composes the baked lighting and the dissolve.
+    - Triplanar hex plates with glowing rims, a lit seam and darkening near the front.
+    - GPU particles sampled from each layer's surface. `prewarm()` builds them in idle time.
+    - Bloom (UnrealBloom, in `stage.ts`) picks up only the HDR seam. On the Intel UHD at 1800×1012 it costs about 4 ms of an 18 ms frame.
   - **Chapters:** 14, in sir's words, each with a camera shot, peel, cutaway, callouts and a live instrument:
     - assembly
     - Biot–Savart field lines, the 5 G floor line and the wrench projectile
@@ -41,7 +49,6 @@
   - A first-person free walk (zone-to-zone camera hops for now).
   - A live console UI on the control-room monitors.
   - KTX2 textures (`toktx` isn't installed).
-  - A dark "console" theme.
 
 ## What the current site does (audited 2026-10-13 in browser)
 - Home page with Train/Learn cards. The status chips (controller, coach) are fine.

@@ -23,7 +23,7 @@ if (missing.length) {
 } else {
   status.textContent = '';
   startConsole(stage);
-  const app = new App(stage, document.getElementById('ui')!);
+  const app = new App(stage, document.getElementById('ui')!, lighting?.probe ?? null);
   app.start();
   if (import.meta.env.DEV) Object.assign(window, { __stage: stage, __app: app, __THREE: await import('three') });
 }

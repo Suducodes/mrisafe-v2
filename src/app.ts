@@ -11,6 +11,7 @@ import { Coach } from './coach/coach';
 import { Controller } from './input/controller';
 import { Hands } from './input/hands';
 import * as THREE from 'three';
+import { Studio } from './engine/studio';
 
 export type Mode = 'home' | 'learn' | 'train';
 
@@ -29,14 +30,18 @@ export class App {
   private readonly home: HTMLElement;
   private readonly modeButtons: Record<'learn' | 'train', HTMLButtonElement>;
 
-  constructor(readonly stage: Stage, host: HTMLElement) {
+  readonly studio: Studio;
+
+  constructor(readonly stage: Stage, host: HTMLElement, probe: THREE.Texture | null) {
     this.layers = new LayerSystem(stage);
     this.layers.alwaysHidden.add('patient');               // the training patient appears only in Train
-    this.layers.setHidden([]);
+    this.layers.setHidden([], [], true);
+    this.layers.prewarm();
+    this.studio = new Studio(stage, probe);
     this.director = new CameraDirector(stage);
     this.callouts = new Callouts(stage, host);
     this.callouts.ignore = (o, p) => this.layers.removedByCut(o, p);
-    const ctx = { stage, layers: this.layers, director: this.director, audio: this.audio };
+    const ctx = { stage, layers: this.layers, director: this.director, audio: this.audio, studio: this.studio };
     this.learn = new Learn(ctx, this.callouts, host);
     this.train = new Train(ctx, this.callouts, host);
     this.coach = new Coach(host, () => (this.mode === 'learn' ? this.learn.context() : this.mode === 'train' ? this.train.context() : {}));
@@ -141,6 +146,7 @@ export class App {
     this.setBodyMode(mode);
     this.home.classList.toggle('gone', mode !== 'home');
     this.home.style.pointerEvents = mode === 'home' ? '' : 'none';
+    if (mode !== 'learn') this.studio.set(false);          // the real suite re-forms around the scanner
     if (mode === 'home') {
       history.replaceState(null, '', location.pathname);
       this.layers.setHidden([]); this.layers.setCut(false);

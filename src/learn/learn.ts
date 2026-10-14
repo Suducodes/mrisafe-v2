@@ -5,6 +5,7 @@ import { PLATES } from './plates';
 import type { PlateCtx } from './plates/types';
 import { el, richText } from '../ui/dom';
 import type { Callouts } from '../ui/callouts';
+import { ROOM_LAYERS } from '../engine/layers';
 
 const CHAPTERS = content.chapters as Chapter[];
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -78,8 +79,17 @@ export class Learn {
     return ch ? { chapter: ch.title, notes: [ch.lead, ch.body, ch.safety].filter(Boolean).join('\n\n').replace(/\*\*/g, '') } : {};
   }
 
+  /** Studio (the room falls away) or the real suite, for chapters that are about the room. */
+  private setEnvironment(studio: boolean) {
+    for (const l of ROOM_LAYERS) { if (studio) this.ctx.layers.alwaysHidden.add(l); else this.ctx.layers.alwaysHidden.delete(l); }
+    this.ctx.studio.set(studio);
+    document.body.classList.toggle('theme-dark', studio);       // the console theme suits the dark hall
+  }
+
   leave() {
     this.active = false;
+    for (const l of ROOM_LAYERS) this.ctx.layers.alwaysHidden.delete(l);
+    document.body.classList.remove('theme-dark');
     this.index.hidden = true;
     this.card.classList.add('out');
     document.body.classList.remove('card-open');
@@ -100,6 +110,7 @@ export class Learn {
     this.plate?.dispose(); this.plate = null;
     this.callouts.set([]);
     this.manualPeel = 0; this.manualCut = !!st.cut;
+    this.setEnvironment(st.env !== 'suite');
     this.ctx.layers.setHidden(st.hide ?? [], st.hideObjects ?? []);
     this.ctx.layers.setCut(!!st.cut);
     this.ctx.director.fly(st.shot).then(() => { if (this.current === i) this.callouts.set(st.callouts); });
@@ -131,8 +142,9 @@ export class Learn {
   }
 
   /**
-   * Cold open: from behind the operator, through the RF glass, then the scanner comes apart
-   * layer by layer down to the superconducting windings, and goes back together.
+   * Cold open: from behind the operator, through the RF glass; then the room dissolves in nanotech
+   * tiles and falls away, leaving the scanner in a vast dark hall. It comes apart layer by layer down
+   * to the superconducting windings, and builds itself back.
    */
   private async coldOpen() {
     const { director, layers } = this.ctx;
@@ -143,8 +155,15 @@ export class Learn {
     const step = (p: Promise<unknown> | number) => Promise.race([typeof p === 'number' ? wait(p) : p, skip]);
 
     await step(director.fly({ eye: [2.2, 1.7, 2.9], target: [0, 1.15, 0], via: THROUGH_GLASS, seconds: 4.2 }));
+    if (!skipped) {
+      // the room goes; the camera rises and pulls back into the hall as it does
+      this.setEnvironment(true);
+      layers.setHidden([]);
+      await step(director.fly({ eye: [5.6, 2.9, 6.6], target: [0, 1.0, 0.2], seconds: 4.6 }));
+    }
+    if (!skipped) await step(director.fly({ eye: [3.3, 2.25, 3.7], target: [0, 1.15, 0], seconds: 2.2 }));
     const peel: [string[], string, [number, number, number]][] = [
-      [['covers', 'coldhead'], 'Covers lift away', [0.9, 1.6, 0.4]],
+      [['covers', 'coldhead'], 'Covers', [0.9, 1.6, 0.4]],
       [['covers', 'coldhead', 'cryostat'], 'Vacuum vessel · 300 K', [0.75, 1.75, 0.2]],
       [['covers', 'coldhead', 'cryostat', 'thermal_shield'], 'Thermal shield · 50 K', [0.72, 1.72, 0.1]],
       [['covers', 'coldhead', 'cryostat', 'thermal_shield', 'he_vessel'], 'Helium vessel · 4.2 K', [0.7, 1.7, 0]],
@@ -153,19 +172,20 @@ export class Learn {
       if (skipped) break;
       layers.setHidden(hide);
       this.callouts.set([{ text, at }]);
-      await step(1300);
+      await step(1900);
     }
     if (!skipped) {
       this.callouts.set([{ text: 'Niobium-titanium windings', at: [0.0, 1.66, 0.37], note: 'superconducting, 1.5 T' },
         { text: 'Shield coils', at: [0.0, 1.93, 0.56] }]);
-      await step(2200);
+      await step(2400);
     }
     this.callouts.set([]);
-    layers.setHidden([]);
+    this.setEnvironment(true);
+    layers.setHidden([]);                               // everything builds itself back
     skipBtn.remove();
     this.skipIntro = null;
     if (skipped) director.cut(STAGING.ch01.shot);
-    else await wait(700);
+    else await wait(2400);
   }
 }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { patchMaterial } from './patches';
 
 /** Written by tools/bake_and_export.py. */
 interface BakeManifest {
@@ -8,23 +9,13 @@ interface BakeManifest {
   probe?: { file: string; position: [number, number, number] };
 }
 
-// Baked surfaces take diffuse light from their lightmap only; the probe still gives them
-// reflections. Dropping this one line removes the probe's diffuse term, so light isn't counted twice.
-const IBL_DIFFUSE = 'iblIrradiance += getIBLIrradiance( geometryNormal );';
-const LIGHTS_MAPS_BAKED = THREE.ShaderChunk.lights_fragment_maps.replace(IBL_DIFFUSE, '');
-if (LIGHTS_MAPS_BAKED === THREE.ShaderChunk.lights_fragment_maps) {
-  console.warn('[lighting] three.js shader chunk changed; baked surfaces will double-count diffuse light');
-}
-
+// Baked surfaces take diffuse light from their lightmap; the environment's diffuse term is scaled
+// by a global (patches.ts) so the bake is not counted twice in the suite.
 function bakedMaterial(src: THREE.MeshStandardMaterial, lightMap: THREE.Texture, intensity: number) {
   const m = src.clone();
   m.lightMap = lightMap;
   m.lightMapIntensity = intensity;
-  m.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_maps>', LIGHTS_MAPS_BAKED);
-  };
-  m.customProgramCacheKey = () => 'baked-lightmap';
-  return m;
+  return patchMaterial(m, { baked: true });
 }
 
 /** RF window: thin bronze-tinted glass that mostly reflects (the copper mesh darkens transmission). */
@@ -39,6 +30,8 @@ function rfGlass(src: THREE.MeshStandardMaterial) {
 export interface BakedLighting {
   /** Apply lightmaps and glass to a loaded asset root. Safe to call for every asset. */
   apply(root: THREE.Object3D): number;
+  /** The room's reflection probe (the suite's environment). */
+  probe: THREE.Texture | null;
 }
 
 export async function loadBakedLighting(renderer: THREE.WebGLRenderer, scene: THREE.Scene, base = '/assets/'): Promise<BakedLighting> {
@@ -56,11 +49,13 @@ export async function loadBakedLighting(renderer: THREE.WebGLRenderer, scene: TH
     atlases.set(name, { tex, intensity: Math.PI * a.scale });
   }));
 
+  let probe: THREE.Texture | null = null;
   if (manifest.probe) {
     const hdr = await new RGBELoader().loadAsync(base + manifest.probe.file);
     hdr.mapping = THREE.EquirectangularReflectionMapping;
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromEquirectangular(hdr).texture;
+    probe = pmrem.fromEquirectangular(hdr).texture;
+    scene.environment = probe;
     hdr.dispose(); pmrem.dispose();
   }
 
@@ -70,6 +65,7 @@ export async function loadBakedLighting(renderer: THREE.WebGLRenderer, scene: TH
     return cache.get(key)!;
   };
   return {
+    probe,
     apply(root) {
       let n = 0;
       root.traverse((child) => {
