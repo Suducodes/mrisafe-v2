@@ -33,9 +33,11 @@
   - Sir's KB runs offline.
   - It detects a local Ollama and grounds answers in the KB. The user's Ollama install is broken (`llama-server` missing), so the coach falls back honestly.
 - **Controller:** sir's ESP32 over Web Serial: pads, tilt-orbit, gestures and the wand.
+- **Hands:**
+  - Sir's MediaPipe hand control: vendored library and his gesture logic.
+  - The model file `hand_landmarker.task` isn't downloaded yet. It loads from Google's storage at runtime, or can be saved into `public/models/` for offline use.
 - **Verification:** with the browser pane hidden, use `__stage.advance(seconds)` in dev to step frames deterministically, then screenshot.
 - **Not done yet:**
-  - MediaPipe hand control (sir had it).
   - A first-person free walk (zone-to-zone camera hops for now).
   - A live console UI on the control-room monitors.
   - KTX2 textures (`toktx` isn't installed).

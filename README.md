@@ -50,6 +50,12 @@ answers with a local model, grounded only in the retrieved knowledge-base entrie
 **Controller**: his ESP32-S3 controller over Web Serial (Chrome or Edge): pads, tilt to orbit,
 gestures, and the magnetometer wand reading.
 
+**Hands**: his webcam hand control (MediaPipe, vendored in `public/vendor/mediapipe`; his gesture
+logic unmodified): pinch to select, pinch-drag to orbit, open palm to reset, two palms to zoom.
+Frames are processed in the browser. For offline use, save `hand_landmarker.task` into
+`public/models/` (link in `public/vendor/mediapipe/README.md`); otherwise it loads from Google's
+model storage the first time.
+
 ## Editing content without code
 
 * Chapter text: `src/content/chapters.json` (or re-extract from the original with

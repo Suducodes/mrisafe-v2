@@ -9,6 +9,7 @@ import { HOME_SHOT } from './learn/chapters';
 import { el } from './ui/dom';
 import { Coach } from './coach/coach';
 import { Controller } from './input/controller';
+import { Hands } from './input/hands';
 import * as THREE from 'three';
 
 export type Mode = 'home' | 'learn' | 'train';
@@ -23,6 +24,7 @@ export class App {
   readonly train: Train;
   readonly coach: Coach;
   readonly controller: Controller;
+  readonly hands: Hands;
   private mode: Mode = 'home';
   private readonly home: HTMLElement;
   private readonly modeButtons: Record<'learn' | 'train', HTMLButtonElement>;
@@ -56,8 +58,11 @@ export class App {
     const ctlBtn = el('button', { title: 'Connect the handheld controller', onclick: () => this.controller.connect() }, 'Controller');
     this.controller = this.makeController(ctlBtn);
     ctlBtn.hidden = !this.controller.supported;
+    const handBtn = el('button', { title: 'Control with your hands (webcam, processed in this browser)', onclick: () => this.hands.toggle() }, 'Hands');
+    this.hands = this.makeHands(handBtn);
+    handBtn.hidden = !window.isSecureContext || !navigator.mediaDevices;
     host.append(this.home, el('div', { class: 'modebar' }, this.modeButtons.learn, this.modeButtons.train,
-      el('button', { onclick: () => this.coach.toggle() }, 'Ask'), ctlBtn, sound,
+      el('button', { onclick: () => this.coach.toggle() }, 'Ask'), ctlBtn, handBtn, sound,
       el('button', { onclick: () => this.go('home') }, 'Home')));
     addEventListener('pointerdown', () => this.audio.ensure(), { once: true });
     this.director.cut(HOME_SHOT);
@@ -91,6 +96,32 @@ export class App {
         this.stage.camera.position.copy(c.target).add(new THREE.Vector3().setFromSpherical(sph));
       },
       wand: (text, _level, dmag) => { btn.title = `Wand meter: ${text} (${dmag.toFixed(0)} µT change)`; },
+    });
+  }
+
+  /** Allwyn Sir's hand control: a pinch taps whatever is under the hand cursor (UI or 3D). */
+  private makeHands(btn: HTMLButtonElement) {
+    const orbit = (dAz: number, dEl: number) => {
+      const c = this.stage.controls;
+      const sph = new THREE.Spherical().setFromVector3(this.stage.camera.position.clone().sub(c.target));
+      sph.theta += dAz; sph.phi = THREE.MathUtils.clamp(sph.phi - dEl, 0.15, Math.PI - 0.15);
+      this.stage.camera.position.copy(c.target).add(new THREE.Vector3().setFromSpherical(sph));
+    };
+    return new Hands({
+      status: (text, on) => { btn.title = text; btn.textContent = on ? 'Hands ●' : 'Hands'; },
+      tap: (x, y) => {
+        const target = document.elementFromPoint(x, y) as HTMLElement | null;
+        if (target && target !== this.stage.renderer.domElement) { target.click(); return; }
+        const canvas = this.stage.renderer.domElement;
+        for (const type of ['pointerdown', 'pointerup']) canvas.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, bubbles: true }));
+      },
+      orbit: (dx, dy) => orbit(-dx * Math.PI * 1.4, dy * Math.PI * 0.9),
+      zoom: (dz) => {
+        const c = this.stage.controls, off = this.stage.camera.position.clone().sub(c.target);
+        off.multiplyScalar(THREE.MathUtils.clamp(Math.exp(-dz * 1.6), 0.8, 1.25));
+        if (off.length() > 0.25 && off.length() < c.maxDistance) this.stage.camera.position.copy(c.target).add(off);
+      },
+      reset: () => { if (this.mode === 'learn') this.learn.resetView(); },
     });
   }
 
